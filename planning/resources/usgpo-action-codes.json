@@ -1,0 +1,448 @@
+{
+  "metadata": {
+    "title": "Field Values for Legislative Action Codes",
+    "source": "https://www.congress.gov/help/field-values/action-codes",
+    "retrieved_date": "2025-03-06",
+    "description": "Actions listed below identify stages that condense detailed legislative action steps."
+  },
+  "action_codes": [
+    {
+      "definition": "Introduced in House",
+      "code": "1000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Reported Original Measure",
+      "code": "1010",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Submitted in House",
+      "code": "1025",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Referred to House committee",
+      "code": "2000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Referred to House subcommittee",
+      "code": "3000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House committee/subcommittee actions",
+      "code": "4000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House committee/subcommittee hearings",
+      "code": "4100",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House committee/subcommittee markups",
+      "code": "4200",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House committee time extension",
+      "code": "4900",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House discharge petition filed",
+      "code": "4950",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Reported to House",
+      "code": "5000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House committee discharged",
+      "code": "5500",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House floor actions",
+      "code": "7000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Passed/agreed to in House",
+      "code": "8000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Failed of passage/not agreed to in House",
+      "code": "9000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Introduced in Senate",
+      "code": "10000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Referred to Senate committee",
+      "code": "11000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Referred to Senate subcommittee",
+      "code": "12000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate committee/subcommittee actions",
+      "code": "13000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate committee/subcommittee hearings",
+      "code": "13100",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate committee/subcommittee markups",
+      "code": "13200",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate committee time extension",
+      "code": "13900",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Reported to Senate",
+      "code": "14000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate committee discharged",
+      "code": "14500",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate committee report filed after reporting",
+      "code": "14900",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate floor actions",
+      "code": "16000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Passed/agreed to in Senate",
+      "code": "17000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Failed of passage/not agreed to in Senate",
+      "code": "18000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Resolving differences -- House actions",
+      "code": "19000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Resolving differences -- Senate actions",
+      "code": "20000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Conference committee actions",
+      "code": "20800",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Conference report filed",
+      "code": "20900",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Conference report agreed to in House",
+      "code": "21000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Conference report disagreed to in House",
+      "code": "22000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Conference report agreed to in Senate",
+      "code": "23000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Conference report disagreed to in Senate",
+      "code": "24000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Roll call votes on measures in House",
+      "code": "25000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Roll call votes on measures in Senate",
+      "code": "26000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Presented to President",
+      "code": "28000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Signed by President",
+      "code": "29000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Sent to Archivist unsigned by President",
+      "code": "29100",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Pocket vetoed by President",
+      "code": "30000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Vetoed by President",
+      "code": "31000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Passed House over veto",
+      "code": "32000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Failed of passage in House over veto",
+      "code": "33000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Passed Senate over veto",
+      "code": "34000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Failed of passage in Senate over veto",
+      "code": "35000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Became Public Law",
+      "code": "36000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Public Law signed by President",
+      "code": "37000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Public Law unsigned by President",
+      "code": "38000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Public Law enacted over veto",
+      "code": "39000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Public Law by other means",
+      "code": "40000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Became Private Law",
+      "code": "41000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Private Law signed by President",
+      "code": "42000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Private Law unsigned by President",
+      "code": "43000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Private Law enacted over veto",
+      "code": "44000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Private Law by other means",
+      "code": "45000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Line item veto by President",
+      "code": "46000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Disapproval bill in House",
+      "code": "47000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Disapproval bill in Senate",
+      "code": "48000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House amendment offered",
+      "code": "71000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House amendment agreed to",
+      "code": "72000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House amendment considered as adopted",
+      "code": "72500",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "House amendment not agreed to",
+      "code": "73000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Other House amendment actions",
+      "code": "74000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Roll call votes on amendments in House",
+      "code": "75000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate amendment submitted",
+      "code": "91000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate amendment referred to committee",
+      "code": "92000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate amendment proposed (on the floor)",
+      "code": "93000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate amendment agreed to",
+      "code": "94000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Senate amendment not agreed to",
+      "code": "95000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Other Senate amendment actions",
+      "code": "96000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    },
+    {
+      "definition": "Roll call votes on amendments in Senate",
+      "code": "97000",
+      "valid_as_of": "2025-03-06 15:52 UTC",
+      "status": "active"
+    }
+  ]
+}

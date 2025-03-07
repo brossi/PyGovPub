@@ -1,0 +1,675 @@
+{
+  "metadata": {
+    "title": "Glossary of Legislative Terms",
+    "source": "Congress.gov",
+    "retrieved_date": "2025-03-06",
+    "description": "Brief explanations of legislative terms used throughout Congress.gov. In-depth descriptions are provided in “About” Legislation, Legislation Text, Committees, Committee Reports, Members, the Congressional Record, the Congressional Record Index, Nominations, House Communications, Senate Communications, and Treaty Documents."
+  },
+  "terms": [
+    {
+      "id": "majoraction",
+      "term": "action codes",
+      "definition": "Action Codes identify stages that condense detailed legislative action steps.",
+      "cross_references": [
+        "legislativeaction"
+      ],
+      "links": [
+        {
+          "text": "Action Codes",
+          "url": "/help/field-values/action-codes"
+        }
+      ],
+      "letter": "a"
+    },
+    {
+      "id": "adjourn",
+      "term": "adjourn",
+      "definition": "Formally end a meeting of a chamber or committee.",
+      "cross_references": [],
+      "links": [],
+      "letter": "a"
+    },
+    {
+      "id": "adjournmentsinedie",
+      "term": "adjournment sine die",
+      "definition": "An adjournment that terminates an annual session of Congress. A “sine die” (“without day”) adjournment sets no day for reconvening, so that Congress will not meet again until the first day of the next session. Under the Constitution, adjournment sine die (except when the next session is about to convene) requires the agreement of both chambers, accomplished through adoption of a concurrent resolution, which in current practice also authorizes leaders of either chamber to reconvene its session if circumstances warrant.",
+      "cross_references": [
+        "concurrentresolution"
+      ],
+      "links": [],
+      "letter": "a"
+    },
+    {
+      "id": "amendment",
+      "term": "amendment",
+      "definition": "A proposed change to a pending text (e.g., a bill, resolution, another amendment, or a treaty [or an associated resolution of ratification]).",
+      "cross_references": [],
+      "links": [],
+      "letter": "a"
+    },
+    {
+      "id": "bicameral",
+      "term": "bicameral",
+      "definition": "Literally, “two chambers;” in a legislative body, having two houses (as in the House of Representatives and the Senate comprising the U.S. Congress).",
+      "cross_references": [],
+      "links": [],
+      "letter": "b"
+    },
+    {
+      "id": "bill",
+      "term": "bill",
+      "definition": "The primary form of legislative measure used to propose law. Depending on the chamber of origin, bills begin with a designation of either H.R. or S.",
+      "cross_references": [],
+      "links": [],
+      "letter": "b"
+    },
+    {
+      "id": "calendar",
+      "term": "calendar",
+      "definition": "Lists of measures, motions, and matters that are (or soon will become) eligible for consideration on the chamber floor; also, the official document that contains these lists and other information about the status of legislation and other matters. The House has four such calendars, published as one document; the Senate publishes two.",
+      "cross_references": [],
+      "links": [],
+      "letter": "c"
+    },
+    {
+      "id": "cbo",
+      "term": "CBO – Congressional Budget Office",
+      "definition": "The Congressional Budget Office is a legislative branch agency that produces independent analyses of budgetary and economic issues to support the Congressional budget process.",
+      "cross_references": [],
+      "links": [
+        {
+          "text": "Congressional Budget Office",
+          "url": "http://www.cbo.gov/"
+        }
+      ],
+      "letter": "c"
+    },
+    {
+      "id": "cloture",
+      "term": "cloture",
+      "definition": "The method by which a supermajority (typically, three-fifths) of the Senate may agree to limit further debate and consideration of a question (e.g., a bill, amendment, or other matter). Details of the procedural process are provided for in Rule XXII of the Senate standing rules.",
+      "cross_references": [],
+      "links": [],
+      "letter": "c"
+    },
+    {
+      "id": "committeesubcommittee",
+      "term": "committee / subcommittee",
+      "definition": "A panel (or subpanel) with members from the House or Senate (or both) tasked with conducting hearings, examining and developing legislation, conducting oversight, and/or helping manage chamber business and activities.",
+      "cross_references": [],
+      "links": [],
+      "letter": "c"
+    },
+    {
+      "id": "committeerelatedactivity",
+      "term": "committee-related activity",
+      "definition": "A committee or subcommittee may interact with a bill in a variety of ways. Bills may be referred to or discharged from a committee by the full chamber. Committees markup bill texts, hold hearings to learn more about a topic, or may express legislative interest. Committees report legislation out to the full chamber recommending or disapproving consideration, or may report an original bill.",
+      "cross_references": [
+        "referral",
+        "markup",
+        "hearing",
+        "originalbill",
+        "reported",
+        "originalbill"
+      ],
+      "links": [],
+      "letter": "c"
+    },
+    {
+      "id": "committeechair",
+      "term": "committee chair",
+      "definition": "The member of the majority party on a committee who has formal responsibility over the panel’s agenda and resources, presides at its meetings, and can, in some circumstances, act on the committee’s behalf.",
+      "cross_references": [],
+      "links": [],
+      "letter": "c"
+    },
+    {
+      "id": "committeeofthewhole",
+      "term": "Committee of the Whole",
+      "definition": "A parliamentary device designed to allow greater participation in floor consideration of measures. It can be understood as the House assembled in a different form; it is a committee of the House composed of every Representative that meets in the House chamber. The House considers many major measures in the Committee of the Whole.",
+      "cross_references": [],
+      "links": [],
+      "letter": "c"
+    },
+    {
+      "id": "committeereport",
+      "term": "committee report",
+      "definition": "Document accompanying a measure reported from a committee. It contains an explanation of the provisions of the measure, arguments for its approval, votes held in markup, individual committee members’ opinions, cost estimates, and other information.",
+      "cross_references": [],
+      "links": [],
+      "letter": "c"
+    },
+    {
+      "id": "dailydigest",
+      "term": "Daily Digest",
+      "definition": "A section of the Congressional Record summarizing the day’s floor and committee actions in each chamber, with page references to the verbatim accounts of floor actions. It also lists the measures scheduled for action during each chamber’s next meeting and the announcements of upcoming committee meetings.",
+      "cross_references": [
+        "congressionalrecord"
+      ],
+      "links": [],
+      "letter": "d"
+    },
+    {
+      "id": "enactingclause",
+      "term": "enacted",
+      "definition": "Made into law.",
+      "cross_references": [],
+      "links": [],
+      "letter": "e"
+    },
+    {
+      "id": "enbloc",
+      "term": "en bloc",
+      "definition": "“All together.” Sometimes a committee or congressional chamber will agree to act concurrently on multiple measures (e.g., bills) or matters (e.g., nominations), thereby considering them “en bloc.”",
+      "cross_references": [],
+      "links": [],
+      "letter": "e"
+    },
+    {
+      "id": "engrossed",
+      "term": "engrossed measure",
+      "definition": "Official copy of a measure as passed by one chamber, including the text as amended by floor action.",
+      "cross_references": [],
+      "links": [],
+      "letter": "e"
+    },
+    {
+      "id": "enrolled",
+      "term": "enrolled measure",
+      "definition": "Final official copy of a measure as passed in identical form by both chambers and then printed on parchment for presentation to the President.",
+      "cross_references": [],
+      "links": [],
+      "letter": "e"
+    },
+    {
+      "id": "errata",
+      "term": "errata",
+      "definition": "Errata are lists of errors in congressional publications. The corrections are printed on sheets, or pages. The errata sheets are usually tipped into the original document.",
+      "cross_references": [],
+      "links": [],
+      "letter": "e"
+    },
+    {
+      "id": "federaldepositorylibrary",
+      "term": "federal depository library",
+      "definition": "Libraries where congressional and other federal publications are available for free public use. Locate a depository library.",
+      "cross_references": [],
+      "links": [
+        {
+          "text": "depository library",
+          "url": "https://ask.gpo.gov/s/FDLD"
+        }
+      ],
+      "letter": "f"
+    },
+    {
+      "id": "filibuster",
+      "term": "filibuster",
+      "definition": "In the Senate, the use of dilatory or obstructive tactics to delay or block passage of a measure by preventing it from coming to a vote.",
+      "cross_references": [],
+      "links": [],
+      "letter": "f"
+    },
+    {
+      "id": "germaneness",
+      "term": "germaneness",
+      "definition": "The requirement that an amendment be closely related—in terms of the precise subject or purpose, for example—to the text it proposes to amend. House rules require amendments to be germane; Senate rules apply this restriction only in limited circumstances.",
+      "cross_references": [],
+      "links": [],
+      "letter": "g"
+    },
+    {
+      "id": "gpo",
+      "term": "GPO – Government Publishing Office",
+      "definition": "Government Publishing Office is a legislative branch agency that provides publishing and dissemination services for the official and authentic government publications to Congress, federal agencies, federal depository libraries, and the American public.",
+      "cross_references": [
+        "federaldepositorylibrary"
+      ],
+      "links": [
+        {
+          "text": "Government Publishing Office",
+          "url": "https://www.govinfo.gov/app/browse/category/bills-statutes"
+        }
+      ],
+      "letter": "g"
+    },
+    {
+      "id": "hearing",
+      "term": "hearing",
+      "definition": "A formal meeting of a congressional committee (or subcommittee) to gather information from witnesses for use in its activities (that is, the development of legislation, oversight of executive agencies, investigations into matters of public policy, or Senate consideration of presidential nominations).",
+      "cross_references": [],
+      "links": [],
+      "letter": "h"
+    },
+    {
+      "id": "identicalbill",
+      "term": "identical bill",
+      "definition": "A bill that is word-for-word identical to another bill. Bills are characterized as identical to each other at the introduced stage only, even though a later (e.g., reported or passed) version of a bill might meet the same criteria for text similarity. Companion measures, procedurally-related measures, and legislation with text similarities are other related bill types. Read more About Related Bills.",
+      "cross_references": [
+        "companionmeasure",
+        "procedurallyrelatedmeasure",
+        "textsimilarities",
+        "relatedbill"
+      ],
+      "links": [
+        {
+          "text": "About Related Bills",
+          "url": "/help/related-bills"
+        }
+      ],
+      "letter": "i"
+    },
+    {
+      "id": "internationalagreement",
+      "term": "international agreement",
+      "definition": "Legal agreements the United States enters into with other States or international organizations; they may take the form of an executive agreement entered into by the executive branch (but not submitted to the Senate for its advice and consent) or the form of a treaty.",
+      "cross_references": [
+        "treaty"
+      ],
+      "links": [],
+      "letter": "i"
+    },
+    {
+      "id": "jointexplanatorystatement",
+      "term": "joint explanatory statement",
+      "definition": "Statement appended to a conference report explaining the conference agreement and the intent of the conferees. Sometimes called a “statement of managers.”",
+      "cross_references": [],
+      "links": [],
+      "letter": "j"
+    },
+    {
+      "id": "jointresolution",
+      "term": "joint resolution",
+      "definition": "A form of legislative measure used to propose changes in law, or to propose an amendment to the U.S. Constitution. Depending on the chamber of origin, they begin with a designation of either H.J.Res. or S.J.Res. Concurrent resolutions and simple resolutions are other types of resolutions. Bill is another form of legislative measure used to propose law.",
+      "cross_references": [
+        "concurrentresolution",
+        "simpleresolution",
+        "bill"
+      ],
+      "links": [],
+      "letter": "j"
+    },
+    {
+      "id": "journal",
+      "term": "journal",
+      "definition": "The constitutionally-mandated record of certain House and Senate actions, including motions offered, votes taken, and amendments agreed to. Unlike the Congressional Record, it does not contain remarks delivered in the House and Senate.",
+      "cross_references": [
+        "congressionalrecord"
+      ],
+      "links": [],
+      "letter": "j"
+    },
+    {
+      "id": "jurisdiction",
+      "term": "jurisdiction",
+      "definition": "A set of policy issues that fall under the purview of a specific committee (or subcommittee); full committee jurisdiction is set by chamber standing rules and precedents.",
+      "cross_references": [],
+      "links": [],
+      "letter": "j"
+    },
+    {
+      "id": "legislativeaction",
+      "term": "legislative action steps",
+      "definition": "Each chamber produces detailed, chamber-specific legislative action steps. Each step has a number code. U.S. Congress Legislative Status Steps is a depiction of the steps in relation to the codes. It was published in 1975 within a committee print titled The Bill Status System for the United States House of Representatives.",
+      "cross_references": [],
+      "links": [
+        {
+          "text": "U.S. Congress Legislative Status Steps",
+          "url": "/committee-print/94th-congress/house-committee-print/54857/image"
+        },
+        {
+          "text": "The Bill Status System for the United States House of Representatives",
+          "url": "/committee-print/94th-congress/house-committee-print/54857"
+        }
+      ],
+      "letter": "l"
+    },
+    {
+      "id": "markup",
+      "term": "markup",
+      "definition": "Meeting by a committee or subcommittee during which committee members offer, debate, and vote on amendments to a measure.",
+      "cross_references": [],
+      "links": [],
+      "letter": "m"
+    },
+    {
+      "id": "nara",
+      "term": "NARA – National Archives and Records Administration",
+      "definition": "After the President signs a bill into law, it is delivered to NARA’s Office of the Federal Register where editors assign a public law number.",
+      "cross_references": [],
+      "links": [
+        {
+          "text": "public law number",
+          "url": "http://www.archives.gov/federal-register/laws/"
+        }
+      ],
+      "letter": "n"
+    },
+    {
+      "id": "nomination",
+      "term": "nomination",
+      "definition": "The president’s formal submission of an individual’s name, and the federal government position to which he or she is proposed to be appointed, for Senate consideration and potential confirmation.",
+      "cross_references": [],
+      "links": [],
+      "letter": "n"
+    },
+    {
+      "id": "notes",
+      "term": "notes",
+      "definition": "Legislative analysts in the Congressional Research Service of the Library of Congress may supplement a bill record with a brief note when the title, text, or actions require explanation beyond the information immediately available. Such explanations might alert the user to a text anomaly, note that the bill is a vehicle for a rapidly moving measure, include links to additional documents, or aid in the interpretation of the measure’s context.",
+      "cross_references": [],
+      "links": [],
+      "letter": "n"
+    },
+    {
+      "id": "officialtitle",
+      "term": "official title",
+      "definition": "A bill’s sponsor designates an official title which may be amended in the course of legislative action. Bills may also have short titles. The more complex a bill becomes, the more likely the bill is to acquire additional titles.",
+      "cross_references": [
+        "shorttitle"
+      ],
+      "links": [],
+      "letter": "o"
+    },
+    {
+      "id": "parliamentarian",
+      "term": "parliamentarian",
+      "definition": "Nonpartisan staff officials (one in each chamber, assisted by deputies and assistants) who provide expert advice and assistance to the presiding officer and to members on the application and interpretation of chamber rules, precedents, and practices (including referral of measures to committee).",
+      "cross_references": [],
+      "links": [],
+      "letter": "p"
+    },
+    {
+      "id": "partionednomination",
+      "term": "partitioned nomination",
+      "definition": "A presidential nomination (PN) with multiple nominees may be partitioned by the Senate if the nominees follow a different confirmation path. Partitions are identified with a suffix; for example, PN230-1 (114th Congress) and PN230-2 (114th Congress). Searching on a PN number in Congress.gov, such as PN230, without a partition designation will retrieve all partitions of a partitioned nomination.",
+      "cross_references": [],
+      "links": [],
+      "letter": "p"
+    },
+    {
+      "id": "partycaucusconference",
+      "term": "party caucus / conference",
+      "definition": "The official organization comprised of all members of a political party serving within a congressional chamber (e.g., the Senate Republican Conference, the House Democratic Caucus, etc.).",
+      "cross_references": [],
+      "links": [],
+      "letter": "p"
+    },
+    {
+      "id": "petition",
+      "term": "petition",
+      "definition": "Written statement from any entity other than a state legislature – boards, commissions, cities, towns, individuals – that may affect the proceedings of a committee or Congress in general. The Senate does not differentiate between petitions and memorials.",
+      "cross_references": [
+        "memorial"
+      ],
+      "links": [],
+      "letter": "p"
+    },
+    {
+      "id": "pingpong",
+      "term": "ping-pong",
+      "definition": "See amendment exchange.",
+      "cross_references": [
+        "amendmentexchange"
+      ],
+      "links": [],
+      "letter": "p"
+    },
+    {
+      "id": "pointoforder",
+      "term": "point of order",
+      "definition": "A member’s statement to the presiding officer that the chamber (or committee) is taking action contrary to the rules or precedents, and a demand that they be enforced.",
+      "cross_references": [],
+      "links": [],
+      "letter": "p"
+    },
+    {
+      "id": "policyareaterm",
+      "term": "policy area term",
+      "definition": "The policy area term vocabulary is consistently used for all bills and resolutions introduced since 1979 (96th Congress). The term Commemorations was used from 1997 to 2008 (105th to 110th Congresses) to categorize measures introduced to honor or memorialize. The term displays in the Subject – Policy Area section of those measures. Example: H.Con.Res.205 [110th].",
+      "cross_references": [],
+      "links": [
+        {
+          "text": "policy area term vocabulary",
+          "url": "/help/field-values/policy-area"
+        },
+        {
+          "text": "H.Con.Res.205 [110th]",
+          "url": "/bill/110th-congress/house-concurrent-resolution/205"
+        }
+      ],
+      "letter": "p"
+    },
+    {
+      "id": "quorum",
+      "term": "quorum",
+      "definition": "Minimum number of members of a chamber (or committee) required for the transaction of certain types of business.",
+      "cross_references": [],
+      "links": [],
+      "letter": "q"
+    },
+    {
+      "id": "quorumcall",
+      "term": "quorum call",
+      "definition": "Action to formally ascertain the presence of the minimum number of members required to transact business. In the Senate, quorum calls are also commonly used as a sort of “time out” in floor proceedings without recessing the chamber.",
+      "cross_references": [],
+      "links": [],
+      "letter": "q"
+    },
+    {
+      "id": "rankingmember",
+      "term": "ranking member",
+      "definition": "The most senior (though not necessarily the longest-serving) member of the minority party on a committee (or subcommittee). The ranking member typically oversees minority committee staff and may coordinate involvement of the minority party committee members in committee activities.",
+      "cross_references": [],
+      "links": [],
+      "letter": "r"
+    },
+    {
+      "id": "recessappointment",
+      "term": "recess appointment",
+      "definition": "A temporary presidential appointment, during a recess of the Senate, of an individual to a federal government position, where such appointment usually requires the advice and consent of the Senate.",
+      "cross_references": [],
+      "links": [],
+      "letter": "r"
+    },
+    {
+      "id": "referral",
+      "term": "referral",
+      "definition": "Assignment of a measure to a committee or committees (or subcommittees) for potential consideration.",
+      "cross_references": [],
+      "links": [],
+      "letter": "r"
+    },
+    {
+      "id": "serialset",
+      "term": "Serial Set",
+      "definition": "The United States Congressional Serial Set is commonly referred to as the Serial Set. Publication of Serial Set volumes began in 1817 (15th Congress). The consecutively-numbered books compile congressional publications for physical distribution. The term Serial Set is used because each volume in the series has a unique number that is useful for locating an item within the series.",
+      "cross_references": [],
+      "links": [],
+      "letter": "s"
+    },
+    {
+      "id": "textsimilarities",
+      "term": "text similarities",
+      "definition": "Legislation that is substantially similar in both text and meaning. Relationships indicated on this basis also include cases where language of one measure is found intact in another, often larger, measure. Identical bills, companion measures, and procedurally-related measures are other related bill types. Read more About Related Bills.",
+      "cross_references": [
+        "identicalbill",
+        "companionmeasure",
+        "procedurallyrelatedmeasure",
+        "relatedbill"
+      ],
+      "links": [
+        {
+          "text": "About Related Bills",
+          "url": "/help/related-bills"
+        }
+      ],
+      "letter": "t"
+    },
+    {
+      "id": "title",
+      "term": "title",
+      "definition": "See official title, popular title, and short title",
+      "cross_references": [
+        "officialtitle",
+        "populartitle",
+        "shorttitle"
+      ],
+      "links": [],
+      "letter": "t"
+    },
+    {
+      "id": "treaty",
+      "term": "treaty",
+      "definition": "An agreement negotiated and signed by the executive that enters into force if it is approved by a two-thirds vote in the Senate, and is subsequently ratified by the President. Read more About Treaty Documents.",
+      "cross_references": [],
+      "links": [
+        {
+          "text": "About Treaty Documents",
+          "url": "https://www.congress.gov/help/treaty-documents"
+        }
+      ],
+      "letter": "t"
+    },
+    {
+      "id": "treatydocument",
+      "term": "treaty document",
+      "definition": "The text of a treaty as submitted to the Senate by the executive branch, as well as letters of transmittal from the President and the Secretary of State, and accompanying background documentation. Read more About Treaty Documents.",
+      "cross_references": [
+        "treaty"
+      ],
+      "links": [
+        {
+          "text": "About Treaty Documents",
+          "url": "https://www.congress.gov/help/treaty-documents"
+        }
+      ],
+      "letter": "t"
+    },
+    {
+      "id": "unanimousconsentagreement",
+      "term": "unanimous consent agreement",
+      "definition": "In the Senate, a proposal that, if agreed to, establishes the procedural guidelines for considering a measure or matter on the floor. If any member objects to such a request, it is not agreed to. Also sometimes called a “UC agreement” or a “time agreement.”",
+      "cross_references": [],
+      "links": [],
+      "letter": "u"
+    },
+    {
+      "id": "unanimousconsentrequest",
+      "term": "unanimous consent request",
+      "definition": "A proposal that all members (of a chamber or committee) agree to set aside one or more chamber or committee rules to take some action otherwise not in order. If any member objects to such a request, it is not agreed to.",
+      "cross_references": [],
+      "links": [],
+      "letter": "u"
+    },
+    {
+      "id": "veto",
+      "term": "veto",
+      "definition": "Presidential disapproval of a bill or joint resolution presented to him for enactment into law. If a president vetoes a bill, it can become law only if the House and Senate separately vote (by two-thirds) to override the veto. A less common form of presidential veto – a pocket veto – occurs if Congress has adjourned without the possibility of returning and the president does not sign the measure within the required 10-day (excluding Sundays) period.",
+      "cross_references": [],
+      "links": [],
+      "letter": "v"
+    }
+  ],
+  "letter_index": {
+    "a": [
+      "majoraction",
+      "adjourn",
+      "adjournmentsinedie",
+      "amendment"
+    ],
+    "b": [
+      "bicameral",
+      "bill"
+    ],
+    "c": [
+      "calendar",
+      "cbo",
+      "cloture",
+      "committeesubcommittee",
+      "committeerelatedactivity",
+      "committeechair",
+      "committeeofthewhole",
+      "committeereport"
+    ],
+    "d": [
+      "dailydigest"
+    ],
+    "e": [
+      "enactingclause",
+      "enbloc",
+      "engrossed",
+      "enrolled",
+      "errata"
+    ],
+    "f": [
+      "federaldepositorylibrary",
+      "filibuster"
+    ],
+    "g": [
+      "germaneness",
+      "gpo"
+    ],
+    "h": [
+      "hearing"
+    ],
+    "i": [
+      "identicalbill",
+      "internationalagreement"
+    ],
+    "j": [
+      "jointexplanatorystatement",
+      "jointresolution",
+      "journal",
+      "jurisdiction"
+    ],
+    "l": [
+      "legislativeaction"
+    ],
+    "m": [
+      "markup"
+    ],
+    "n": [
+      "nara",
+      "nomination",
+      "notes"
+    ],
+    "o": [
+      "officialtitle"
+    ],
+    "p": [
+      "parliamentarian",
+      "partionednomination",
+      "partycaucusconference",
+      "petition",
+      "pingpong",
+      "pointoforder",
+      "policyareaterm"
+    ],
+    "q": [
+      "quorum",
+      "quorumcall"
+    ],
+    "r": [
+      "rankingmember",
+      "recessappointment",
+      "referral"
+    ],
+    "s": [
+      "serialset"
+    ],
+    "t": [
+      "textsimilarities",
+      "title",
+      "treaty",
+      "treatydocument"
+    ],
+    "u": [
+      "unanimousconsentagreement",
+      "unanimousconsentrequest"
+    ],
+    "v": [
+      "veto"
+    ]
+  }
+}
