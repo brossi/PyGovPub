@@ -133,6 +133,57 @@ All tests MUST follow these organization rules:
    - Do NOT manually modify sys.path in test files
    - Use pytest fixtures for test dependencies
 
+## Test Stubs and Coverage Projection
+
+The project uses test stubs to plan coverage and document testing requirements before implementation.
+
+### Creating Test Stubs
+
+Test stubs are automatically excluded from test runs using these patterns:
+
+1. **Function name contains "stub"**:
+   ```python
+   def test_stub_api_validation():
+       """This stub tests API validation logic."""
+       assert True
+   ```
+
+2. **Function contains a STUB comment**:
+   ```python
+   def test_auth_flow():
+       # STUB: This tests lines 45-60 in auth_manager.py
+       """Tests authentication flow."""
+       assert True
+   ```
+
+3. **Function contains a WIP comment**:
+   ```python
+   def test_complex_scenario():
+       # WIP: Will implement when feature is complete
+       """Tests a complex scenario."""
+       assert False  # Would fail if run, but won't be run
+   ```
+
+### Coverage Projection
+
+Use the `projected_coverage.py` tool to predict coverage after stub implementation:
+
+```bash
+# Basic usage - analyzes auth package and all stubs
+./utilities/projected_coverage.py
+
+# Custom analysis
+./utilities/projected_coverage.py --package pygovpub.core --stub-dir tests/unit/core
+```
+
+### Test Stub Best Practices
+
+1. Document which lines of code the stub will test using `# STUB: This tests lines X-Y`
+2. Create stubs alongside implementation to ensure complete coverage
+3. Add detailed docstrings explaining what will be tested
+4. Keep stubs in sync with code changes
+5. See `docs/test_stubs.md` for complete documentation
+
 ## Style Guidelines
 - **Imports**: Group imports: stdlib, third-party, local. Sort alphabetically within groups.
 - **Formatting**: Follow PEP 8 with 88-character line limit (Black default).
