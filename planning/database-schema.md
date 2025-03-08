@@ -20,16 +20,19 @@ from sqlmodel import SQLModel, Field, Relationship
 from pydantic import constr, conint
 
 class Congress(SQLModel, table=True):
+    """Congress session tracking"""
     __tablename__ = "congresses"
+
     congress_id: int = Field(primary_key=True)
     start_date: datetime
     end_date: datetime
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Bill(SQLModel, table=True):
+    """Legislative bill tracking"""
     __tablename__ = "bills"
 
-    bill_id: str = Field(primary_key=True, max_length=50)
+    bill_id: str = Field(primary_key=True)
     congress_id: int = Field(foreign_key="congresses.congress_id")
     bill_type: str = Field(
         max_length=10,
@@ -40,11 +43,16 @@ class Bill(SQLModel, table=True):
     bill_number: int
     title: str
     introduced_date: Optional[datetime]
-    status: Optional[str] = Field(max_length=50)
+    status: Optional[str]
     last_action_date: Optional[datetime]
     source_system: str = Field(
         max_length=10,
         sa_column_kwargs={"check": "source_system IN ('govinfo', 'congress')"}
+    )
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow}
     )
 
     # Relationships
@@ -55,22 +63,37 @@ class Bill(SQLModel, table=True):
         table = True
 
 class BillVersion(SQLModel, table=True):
+    """Bill version tracking"""
     __tablename__ = "bill_versions"
 
-    version_id: str = Field(primary_key=True, max_length=100)
+    version_id: str = Field(primary_key=True)
     bill_id: str = Field(foreign_key="bills.bill_id")
     version_code: str = Field(
         max_length=10,
         sa_column_kwargs={
-            "check": "version_code IN ('ih', 'rh', 'eh', 'rcs', 'rs', 'es', 'enr', 'rdh', 'rah', 'rds', 'ras')"
+            "check": "version_code IN ('ih', 'rh', 'eh', 'rcs', 'rs', 'es', 'enr')"
         }
     )
     published_date: Optional[datetime]
-    govinfo_package_id: Optional[str] = Field(max_length=100, unique=True)
+    govinfo_package_id: Optional[str] = Field(unique=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    # Relationship
-    bill: Bill = Relationship(back_populates="versions")
-```
+class Committee(SQLModel, table=True):
+    """Committee tracking"""
+    __tablename__ = "committees"
+
+    committee_id: str = Field(primary_key=True)
+    congress_id: int = Field(foreign_key="congresses.congress_id")
+    name: str
+    chamber: str = Field(
+        max_length=10,
+        sa_column_kwargs={"check": "chamber IN ('house', 'senate', 'joint')"}
+    )
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow}
+    )
 
 ## Database Connection Management
 
@@ -192,17 +215,6 @@ CREATE TABLE members (
 );
 
 -- Committees
-CREATE TABLE committees (
-    committee_id VARCHAR(20) PRIMARY KEY,
-    congress_id INTEGER REFERENCES congresses(congress_id),
-    name VARCHAR(255) NOT NULL,
-    chamber VARCHAR(10) NOT NULL,
-    type VARCHAR(50),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT valid_chamber CHECK (chamber IN ('house', 'senate', 'joint'))
-);
-
--- Committee Members
 CREATE TABLE committee_members (
     committee_id VARCHAR(20) REFERENCES committees(committee_id),
     bioguide_id VARCHAR(10) REFERENCES members(bioguide_id),

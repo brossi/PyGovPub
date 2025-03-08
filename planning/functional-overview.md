@@ -20,11 +20,33 @@ PyGovPub is a Python SDK that provides unified access to U.S. Federal Government
    - Error tracking and reporting
 4. **Type Safety**: Full typing support for modern Python development
 5. **Data Integrity**:
-   - Document authentication verification
-   - Digital signature validation
-   - Source system tracking
-   - Version conflict resolution
-   - Historical data partitioning
+   - Document authentication verification (using digital signatures)
+   - Digital signature validation (PKI-based verification)
+   - Source system tracking (origin attribution)
+   - Version conflict resolution (handling API version mismatches)
+   - Historical data partitioning (pre/post-1973 separation)
+
+## Technical Terms
+
+### Bill Version Codes
+- `ih`: Introduced in House
+- `rh`: Reported in House
+- `eh`: Engrossed in House
+- `rcs`: Reference in Committee Senate
+- `rs`: Reported in Senate
+- `es`: Engrossed in Senate
+- `enr`: Enrolled Bill
+
+### API Response Types
+- `nested_json`: Hierarchical data with relationships (Congress.gov)
+- `flat_metadata`: Document-centric data structure (GovInfo.gov)
+- `bulk_xml`: Complete XML repositories for offline processing
+- `streaming_updates`: Real-time data feeds
+
+### Authentication Methods
+- `api_key`: Standard API key authentication
+- `digital_signature`: PKI-based document verification
+- `hmac`: HMAC-SHA256 for webhook validation
 
 ## High-Level Architecture
 
@@ -34,33 +56,33 @@ PyGovPub is a Python SDK that provides unified access to U.S. Federal Government
 pygovpub/
 ├── core/
 │   ├── client.py          # Main client interface
-│   ├── auth.py           # Dual API authentication
-│   ├── config.py         # Configuration management
-│   ├── sync.py          # Data synchronization
-│   ├── monitor.py       # API usage tracking
-│   └── exceptions.py     # Custom exceptions
+│   ├── auth.py           # API authentication manager
+│   ├── config.py         # Configuration handler
+│   ├── sync.py          # Data synchronization manager
+│   ├── monitor.py       # API usage tracker
+│   └── exceptions.py     # Custom error definitions
 ├── sources/
 │   ├── govinfo/         # GovInfo.gov integration
 │   │   ├── documents.py # Document retrieval
-│   │   ├── bulk.py     # Bulk data handling
-│   │   ├── auth.py     # Document authentication
-│   │   └── search.py    # Full-text search
+│   │   ├── bulk.py     # Bulk data processor
+│   │   ├── auth.py     # Document authenticator
+│   │   └── search.py    # Full-text search engine
 │   └── congress/        # Congress.gov integration
-│       ├── legislative.py # Process tracking
-│       ├── members.py    # Member data
-│       ├── treaties.py   # Treaty tracking
-│       └── nominations.py # Executive nominations
+│       ├── legislative.py # Process tracker
+│       ├── members.py    # Member data manager
+│       ├── treaties.py   # Treaty tracker
+│       └── nominations.py # Nomination processor
 ├── models/
 │   ├── common.py        # Shared data models
-│   ├── legislative.py   # Legislative content models
-│   ├── executive.py     # Executive branch models
+│   ├── legislative.py   # Legislative models
+│   ├── executive.py     # Executive models
 │   └── federal.py       # Federal document models
 └── utils/
-    ├── cache.py         # Caching mechanisms
-    ├── rate_limit.py    # Rate limit tracking
-    ├── validation.py    # Input validation
-    ├── sync.py         # Sync management
-    └── verify.py       # Signature verification
+    ├── cache.py         # Cache manager
+    ├── rate_limit.py    # Rate limiter
+    ├── validation.py    # Input validator
+    ├── sync.py         # Sync controller
+    └── verify.py       # Signature verifier
 ```
 
 ### 2. Primary Resource Categories

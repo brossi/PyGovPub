@@ -36,6 +36,7 @@ acc=resources/accessibility-integration.md
 env=resources/.env-example
 glossary=resources/glossary-integration.md
 checklist=planning/checklist-guide.md
+api_docs=standards/api-documentation.md
 </refs>
 
 <deps>
@@ -524,3 +525,53 @@ pip install pygovpub
 ```python
 [restore quick start code example]
 ```
+
+# PyGovPub Documentation
+
+## Directory Structure
+
+### Core Documentation
+- `README.md` - This file
+- `functional-overview.md` - Core functionality and architecture
+- `database-schema.md` - Database design and models
+- `fastapi-router-structure.md` - API implementation details
+
+### Planning
+- `actions/` - Implementation checklists and phase tracking
+- `user-stories/` - User stories and requirements
+- `endpoints/` - API endpoint specifications
+- `standards/` - Project standards and conventions
+  - `naming-conventions.md` - Naming standards
+  - Additional standards documents
+
+### Quality Assurance
+- `qa/` - Quality assurance documentation
+  - `unit-test-manifest.md` - Unit test specifications and coverage requirements
+  - `integration-test-manifest.md` - Integration test specifications
+  - `logging-strategy.md` - Logging standards and implementation
+
+### Development Resources
+- `dev-references/` - Development reference documentation
+- `resources/` - Additional development resources
+- `utilities/` - Development utilities and tools
+
+## Test Coverage Requirements
+
+All components must meet the following test coverage requirements as specified in `qa/unit-test-manifest.md`:
+
+### Critical Path Components
+- 100% test coverage required
+- All error conditions must be tested
+- All edge cases must be documented and tested
+
+### Integration Requirements
+As detailed in `qa/integration-test-manifest.md`:
+- All API endpoints must have integration tests
+- All database operations must have integration tests
+- Cross-component workflows must be tested
+
+### Logging Requirements
+Following `qa/logging-strategy.md`:
+- All errors must be logged
+- All API requests must be logged
+- Performance metrics must be tracked

@@ -1,5 +1,28 @@
 # PyGovPub Logging Strategy
 
+## Technical Terms
+
+### Log Categories
+- `api`: API interaction logs
+- `sync`: Data synchronization logs
+- `auth`: Authentication and authorization logs
+- `document`: Document processing logs
+- `perf`: Performance monitoring logs
+- `security`: Security-related logs
+- `system`: System operation logs
+
+### Log Levels
+- `debug` (10): Detailed debugging information
+- `info` (20): General operational information
+- `warning` (30): Warning messages for potential issues
+- `error` (40): Error conditions requiring attention
+- `critical` (50): Critical conditions requiring immediate action
+
+### Metrics Types
+- `counter`: Cumulative metric that only increases
+- `histogram`: Samples observations and counts them in configurable buckets
+- `gauge`: Single numerical value that can go up and down
+
 ## Overview
 
 This document outlines PyGovPub's logging architecture, designed to provide comprehensive visibility into system operations, API interactions, and data synchronization processes. The strategy focuses on structured logging, distributed tracing, and metrics collection to support operational monitoring, debugging, and compliance requirements.
@@ -11,20 +34,22 @@ This document outlines PyGovPub's logging architecture, designed to provide comp
 #### Log Levels and Categories
 ```python
 class LogCategory:
-    API_INTERACTION = "api"
-    SYNC = "sync"
-    AUTH = "auth"
-    DOCUMENT = "document"
-    PERFORMANCE = "perf"
-    SECURITY = "security"
-    SYSTEM = "system"
+    """Log category definitions for system-wide use"""
+    API_INTERACTION = "api"      # API request/response tracking
+    SYNC = "sync"               # Data synchronization operations
+    AUTH = "auth"               # Authentication events
+    DOCUMENT = "document"       # Document processing
+    PERFORMANCE = "perf"        # Performance metrics
+    SECURITY = "security"       # Security events
+    SYSTEM = "system"          # General system operations
 
 class LogLevel:
-    DEBUG = 10
-    INFO = 20
-    WARNING = 30
-    ERROR = 40
-    CRITICAL = 50
+    """Standard log levels with numeric values"""
+    DEBUG = 10    # Detailed debugging information
+    INFO = 20     # General operational information
+    WARNING = 30  # Warning messages
+    ERROR = 40    # Error conditions
+    CRITICAL = 50 # Critical failures
 ```
 
 #### Log Entry Schema
@@ -36,6 +61,7 @@ from uuid import UUID
 from sqlalchemy import Index, text
 
 class SystemLogs(SQLModel, table=True):
+    """System-wide logging model for structured event tracking"""
     __tablename__ = "system_logs"
 
     # Composite indices for common queries
@@ -48,18 +74,55 @@ class SystemLogs(SQLModel, table=True):
               postgresql_where=text("level >= 40 AND timestamp > now() - interval '24 hours'"))
     )
 
-    log_id: Optional[int] = Field(default=None, primary_key=True)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    level: int = Field(index=True)
-    category: str = Field(max_length=50, index=True)
-    trace_id: Optional[UUID] = Field(index=True)
-    span_id: Optional[UUID]
-    source: Dict[str, Any] = Field(sa_column=Column(JSONB))
-    context: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSONB))
-    metrics: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSONB))
-    message: str
-    data: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSONB))
-    retention_days: int = Field(default=90)
+    log_id: Optional[int] = Field(
+        default=None,
+        primary_key=True,
+        description="Unique log entry identifier"
+    )
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="Event timestamp"
+    )
+    level: int = Field(
+        index=True,
+        description="Log level (10:DEBUG to 50:CRITICAL)"
+    )
+    category: str = Field(
+        max_length=50,
+        index=True,
+        description="Log category (api, sync, auth, etc.)"
+    )
+    trace_id: Optional[UUID] = Field(
+        index=True,
+        description="Distributed tracing identifier"
+    )
+    span_id: Optional[UUID] = Field(
+        description="Trace span identifier"
+    )
+    source: Dict[str, Any] = Field(
+        sa_column=Column(JSONB),
+        description="Event source details"
+    )
+    context: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSONB),
+        description="Additional context information"
+    )
+    metrics: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSONB),
+        description="Associated metrics data"
+    )
+    message: str = Field(description="Log message")
+    data: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSONB),
+        description="Structured event data"
+    )
+    retention_days: int = Field(
+        default=90,
+        description="Log retention period in days"
+    )
 
     class Config:
         json_encoders = {

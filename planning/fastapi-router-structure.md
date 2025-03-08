@@ -1,5 +1,23 @@
 # FastAPI Integration Guide
 
+## Technical Terms
+
+### Response Models
+- `BillResponse`: Standardized bill information response
+- `GlossaryTermResponse`: Term definition response
+- `APIError`: Error response structure
+
+### Database Models
+- `Bill`: Legislative bill tracking model
+- `BillVersion`: Bill version and authentication model
+- `Congress`: Congressional session model
+- `GlossaryTerm`: Legislative term definition model
+
+### Authentication Types
+- `api_key`: API key in request header
+- `hmac`: HMAC-SHA256 webhook validation
+- `session`: Database session authentication
+
 ## Router Structure
 
 PyGovPub's FastAPI implementation leverages SQLModel for type-safe database operations and efficient query handling.
@@ -19,42 +37,52 @@ from .models import Bill, BillVersion, Congress
 
 # Core Models
 class Bill(SQLModel, table=True):
+    """Legislative bill tracking model"""
     __tablename__ = "bills"
 
     bill_id: str = Field(
         primary_key=True,
         max_length=50,
-        description="Unique bill identifier"
+        description="Unique bill identifier (format: {type}{number}-{congress})"
     )
     congress_id: int = Field(
         foreign_key="congresses.congress_id",
-        sa_column_kwargs={"index": True}
+        sa_column_kwargs={"index": True},
+        description="Congressional session identifier"
     )
     bill_type: str = Field(
         max_length=10,
         sa_column_kwargs={
             "check": "bill_type IN ('hr', 's', 'hjres', 'sjres', 'hconres', 'sconres', 'hres', 'sres')"
-        }
+        },
+        description="Bill type code (hr: House Bill, s: Senate Bill, etc.)"
     )
-    bill_number: int
-    title: str
-    introduced_date: Optional[datetime]
+    bill_number: int = Field(description="Numeric identifier within congress")
+    title: str = Field(description="Official bill title")
+    introduced_date: Optional[datetime] = Field(description="Date bill was introduced")
     status: Optional[str] = Field(
         max_length=50,
-        sa_column_kwargs={"index": True}
+        sa_column_kwargs={"index": True},
+        description="Current bill status"
     )
     last_action_date: Optional[datetime] = Field(
         None,
-        sa_column_kwargs={"index": True}
+        sa_column_kwargs={"index": True},
+        description="Date of most recent action"
     )
     source_system: str = Field(
         max_length=10,
-        sa_column_kwargs={"check": "source_system IN ('govinfo', 'congress')"}
+        sa_column_kwargs={"check": "source_system IN ('govinfo', 'congress')"},
+        description="Data source system"
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="Record creation timestamp"
+    )
     updated_at: datetime = Field(
         default_factory=datetime.utcnow,
-        sa_column_kwargs={"onupdate": datetime.utcnow}
+        sa_column_kwargs={"onupdate": datetime.utcnow},
+        description="Last update timestamp"
     )
 
     # Relationships with lazy="selectin" for efficient loading
@@ -72,6 +100,7 @@ class Bill(SQLModel, table=True):
 
 # Response Models
 class BillResponse(SQLModel):
+    """Standardized bill information response"""
     bill_id: str
     congress_id: int
     bill_type: str
@@ -92,7 +121,6 @@ class BillResponse(SQLModel):
                 "status": "INTRODUCED"
             }
         }
-```
 
 ### Router Organization
 
