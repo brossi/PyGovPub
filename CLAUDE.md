@@ -191,8 +191,8 @@ The `planning/qa/` directory contains:
 
 ### Phase Sequencing
 Development MUST follow the phase sequence defined in `00-phase.md`:
-1. Local Development Environment [DX-003]
-2. API Authentication Management [AUTH-001]
+1. Local Development Environment [DX-003] ✅ COMPLETED
+2. API Authentication Management [AUTH-001] ⏩ NEXT
 3. Error Handling [CORE-002]
 4. Unified Data Response Format [CORE-001]
 5. Development Logging and Debugging [DX-004]
@@ -200,6 +200,15 @@ Development MUST follow the phase sequence defined in `00-phase.md`:
 7. Command Line Interface [DX-002]
 8. Public Service Achievement Validation
 9. CI/CD Pipeline Implementation
+
+### Checklist Management
+IMPORTANT: When implementing a phase, update the checklist in the corresponding action file (e.g., `planning/actions/02-auth001.md` for AUTH-001) AS YOU COMPLETE EACH TASK. Do not wait until the end to mark all items complete at once. So is it generated: [Claude.Anthropic.3.7.Sonnet-20250219-UpdatedInstructions-2025-03-08-04:01-UTC]
+
+Each completed task should:
+1. Be marked with [x] immediately after implementation
+2. Have its corresponding test implemented and passing
+3. Include any necessary documentation updates
+4. Follow the style guidelines and code quality standards
 
 ### Quality Gates
 Each phase must pass the quality gates defined in `08-completion.md`:

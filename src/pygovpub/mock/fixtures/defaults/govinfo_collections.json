@@ -1,0 +1,140 @@
+{
+  "collections": [
+    {
+      "collectionCode": "BILLS",
+      "collectionName": "Congressional Bills",
+      "packageCount": 246521,
+      "granuleCount": 246521,
+      "branch": "legislative",
+      "category": "Bills and Statutes"
+    },
+    {
+      "collectionCode": "COMPS",
+      "collectionName": "Compilation of Presidential Documents",
+      "packageCount": 12863,
+      "granuleCount": 12863,
+      "branch": "executive",
+      "category": "Presidential Materials"
+    },
+    {
+      "collectionCode": "USCOURTS",
+      "collectionName": "United States Courts Opinions",
+      "packageCount": 86435,
+      "granuleCount": 86435,
+      "branch": "judicial",
+      "category": "Court Opinions"
+    },
+    {
+      "collectionCode": "FR",
+      "collectionName": "Federal Register",
+      "packageCount": 8214,
+      "granuleCount": 429651,
+      "branch": "executive",
+      "category": "Regulatory Information"
+    },
+    {
+      "collectionCode": "GOVMAN",
+      "collectionName": "United States Government Manual",
+      "packageCount": 54,
+      "granuleCount": 1086,
+      "branch": "executive",
+      "category": "Reference"
+    },
+    {
+      "collectionCode": "PLAW",
+      "collectionName": "Public and Private Laws",
+      "packageCount": 8541,
+      "granuleCount": 8541,
+      "branch": "legislative",
+      "category": "Bills and Statutes"
+    },
+    {
+      "collectionCode": "PPP",
+      "collectionName": "Public Papers of the Presidents of the United States",
+      "packageCount": 73,
+      "granuleCount": 6781,
+      "branch": "executive",
+      "category": "Presidential Materials"
+    },
+    {
+      "collectionCode": "STATUTE",
+      "collectionName": "Statutes at Large",
+      "packageCount": 209,
+      "granuleCount": 23154,
+      "branch": "legislative",
+      "category": "Bills and Statutes"
+    },
+    {
+      "collectionCode": "CREC",
+      "collectionName": "Congressional Record",
+      "packageCount": 5643,
+      "granuleCount": 5643,
+      "branch": "legislative",
+      "category": "Congressional Committee Materials"
+    },
+    {
+      "collectionCode": "CCAL",
+      "collectionName": "Congressional Calendars",
+      "packageCount": 1341,
+      "granuleCount": 1341,
+      "branch": "legislative",
+      "category": "Congressional Committee Materials"
+    },
+    {
+      "collectionCode": "CRECB",
+      "collectionName": "Congressional Record (Bound Edition)",
+      "packageCount": 175,
+      "granuleCount": 175,
+      "branch": "legislative",
+      "category": "Congressional Committee Materials"
+    },
+    {
+      "collectionCode": "CPRT",
+      "collectionName": "Congressional Committee Prints",
+      "packageCount": 4321,
+      "granuleCount": 4321,
+      "branch": "legislative",
+      "category": "Congressional Committee Materials"
+    },
+    {
+      "collectionCode": "CHRG",
+      "collectionName": "Congressional Hearings",
+      "packageCount": 17523,
+      "granuleCount": 17523,
+      "branch": "legislative",
+      "category": "Congressional Committee Materials"
+    },
+    {
+      "collectionCode": "CDOC",
+      "collectionName": "Congressional Documents",
+      "packageCount": 6543,
+      "granuleCount": 6543,
+      "branch": "legislative",
+      "category": "Congressional Committee Materials"
+    },
+    {
+      "collectionCode": "CRPT",
+      "collectionName": "Congressional Reports",
+      "packageCount": 42168,
+      "granuleCount": 42168,
+      "branch": "legislative",
+      "category": "Congressional Committee Materials"
+    },
+    {
+      "collectionCode": "CFR",
+      "collectionName": "Code of Federal Regulations",
+      "packageCount": 465,
+      "granuleCount": 120734,
+      "branch": "executive",
+      "category": "Regulatory Information"
+    },
+    {
+      "collectionCode": "LSA",
+      "collectionName": "List of CFR Sections Affected",
+      "packageCount": 321,
+      "granuleCount": 321,
+      "branch": "executive",
+      "category": "Regulatory Information"
+    }
+  ]
+}

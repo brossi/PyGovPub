@@ -1,0 +1,75 @@
+{
+  "packageId": "BILLS-117hr1enr",
+  "lastModified": "2022-01-04T10:15:30Z",
+  "packageSize": "2831744",
+  "docClass": "hr",
+  "title": "For the People Act of 2021",
+  "congress": "117",
+  "dateIssued": "2021-03-11",
+  "details": {
+    "bill-type": "hr",
+    "bill-number": "1",
+    "origin-chamber": "House",
+    "bill-version": "enr",
+    "is-private": "false",
+    "public-law-number": null,
+    "total-pages": "791"
+  },
+  "relationships": [
+    {
+      "packageId": "BILLS-117hr1rh",
+      "name": "Reported in House",
+      "type": "version"
+    },
+    {
+      "packageId": "BILLS-117hr1ih",
+      "name": "Introduced in House",
+      "type": "version"
+    }
+  ],
+  "download": {
+    "pdfLink": "https://api.govinfo.gov/packages/BILLS-117hr1enr/pdf",
+    "xmlLink": "https://api.govinfo.gov/packages/BILLS-117hr1enr/xml",
+    "modsLink": "https://api.govinfo.gov/packages/BILLS-117hr1enr/mods",
+    "htmlLink": null
+  },
+  "granules": [
+    {
+      "granuleId": "BILLS-117hr1enr",
+      "granuleClass": "BILLS",
+      "title": "For the People Act of 2021",
+      "contentType": "application/pdf",
+      "docClass": "hr",
+      "accessId": "BILLS-117hr1enr",
+      "collection": "BILLS",
+      "downloadCount": 12387,
+      "pageCount": 791,
+      "size": 2831744,
+      "parents": [],
+      "download": {
+        "pdfLink": "https://api.govinfo.gov/packages/BILLS-117hr1enr/granules/BILLS-117hr1enr/pdf",
+        "xmlLink": "https://api.govinfo.gov/packages/BILLS-117hr1enr/granules/BILLS-117hr1enr/xml",
+        "modsLink": "https://api.govinfo.gov/packages/BILLS-117hr1enr/granules/BILLS-117hr1enr/mods"
+      }
+    }
+  ],
+  "branch": "legislative",
+  "collectionCode": "BILLS",
+  "collectionName": "Congressional Bills",
+  "category": "Bills and Statutes",
+  "governmentAuthor1": "United States Congress",
+  "governmentAuthor2": "117th Congress",
+  "suDocLabel": "Y 1.6:",
+  "dateIssued": "2021-03-11",
+  "statistics": {
+    "totalPageCount": 791,
+    "totalGranuleCount": 1,
+    "totalDocumentCount": 1
+  },
+  "publisher": "U.S. Government Publishing Office",
+  "digitalSignature": {
+    "pkiSignature": "jHdD8nG9vXRFcmkKB2j5XO9QiPoYn4Kbxm+V9I4o5JzH9cRTpXs2R42qDj7UTJrkwFdF2QrJGQ==",
+    "pkiSignatureDate": "2021-03-11T10:15:30Z",
+    "pkiSignatureVerificationStatus": "verified"
+  }
+}

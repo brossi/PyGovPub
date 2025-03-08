@@ -1,36 +1,95 @@
-# PyGovPub
+# PyGovPub SDK
 
-**PyGovPub** is a Python SDK that simplifies access to government data through the GovInfo and Congress.gov APIs. Designed for developers, this library wraps these APIs to provide an easy-to-use interface for retrieving publicly available U.S. legislative and government information.
+Python SDK for unified access to U.S. Federal Government data through integration with Congress.gov and GovInfo.gov APIs.
 
-## Features
-- Access to data from GovInfo and Congress.gov APIs
-- Easy integration into Python applications
-- Focused on making government data more accessible for developers
+## Overview
 
-## Usage
-TBD (To be updated as development progresses)
+PyGovPub simplifies access to legislative and regulatory data, providing a unified interface to multiple government APIs. It ensures document authenticity, manages API rate limits, and normalizes data from different sources.
 
-## Contributing
-Contributions are welcome! Please see the guidelines for contributing to this project.
+### Key Features
 
-## MIT License
+- **Unified API Access**: Single interface to both Congress.gov and GovInfo.gov APIs
+- **Data Normalization**: Consistent schemas across disparate data sources
+- **Authentication Management**: Automatic API key handling and rate limit tracking
+- **Mock Server**: Local development without consuming API quotas
+- **Record/Replay**: Record real API responses for testing and development
 
-Copyright (c) [2025] [Ben Rossi]
+## Installation
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+```bash
+pip install pygovpub
+```
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+## Quick Start
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+### Configuration
+
+Create a `.env` file with your API keys:
+
+```bash
+# API Keys
+CONGRESS_GOV_API_KEY=your_congress_api_key
+GOVINFO_API_KEY=your_govinfo_api_key
+
+# Optional settings
+PYGOVPUB_ENV=development  # development, test, or production
+PYGOVPUB_MOCK_ENABLED=true  # Use mock server for development
+```
+
+### Basic Usage
+
+```python
+import pygovpub
+from pygovpub import client
+
+# Create a client
+pygovpub_client = client.PyGovPubClient()
+
+# Get a bill from Congress.gov
+bill = pygovpub_client.get_bill(
+    congress=117,
+    bill_type="hr",
+    bill_number=1
+)
+print(f"Bill: {bill.title}")
+
+# Get bill document from GovInfo.gov
+document = pygovpub_client.get_bill_document(
+    package_id="BILLS-117hr1enr"
+)
+print(f"Document: {document.title}")
+```
+
+## Development Mode
+
+For development without consuming real API quotas:
+
+```python
+import os
+os.environ["PYGOVPUB_MOCK_ENABLED"] = "true"
+
+# Now all API calls will use the mock server
+```
+
+### Running the Mock Server Standalone
+
+```bash
+# Run the mock server on the default port (8000)
+pygovpub-mock
+
+# Run with custom settings
+pygovpub-mock --port 9000 --latency 200 --rate-limits
+```
+
+## Documentation
+
+For detailed documentation, see:
+
+- [API Reference](docs/api_reference.md)
+- [Mock Server Guide](docs/mock_server.md)
+- [Authentication](docs/authentication.md)
+- [Data Models](docs/data_models.md)
+
+## License
+
+MIT License
