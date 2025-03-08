@@ -192,8 +192,8 @@ The `planning/qa/` directory contains:
 ### Phase Sequencing
 Development MUST follow the phase sequence defined in `00-phase.md`:
 1. Local Development Environment [DX-003] ✅ COMPLETED
-2. API Authentication Management [AUTH-001] ⏩ NEXT
-3. Error Handling [CORE-002]
+2. API Authentication Management [AUTH-001] ✅ COMPLETED
+3. Error Handling [CORE-002] ⏩ NEXT
 4. Unified Data Response Format [CORE-001]
 5. Development Logging and Debugging [DX-004]
 6. SDK Health Check and Validation [DX-001]

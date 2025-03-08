@@ -45,7 +45,7 @@ class AuthenticationError(PyGovPubException):
     status_code = 401
 
 
-class RateLimitExceeded(PyGovPubException):
+class RateLimitExceededError(PyGovPubException):
     """API rate limit exceeded."""
     
     status_code = 429
@@ -53,7 +53,7 @@ class RateLimitExceeded(PyGovPubException):
     def __init__(
         self, 
         message: str, 
-        retry_after: int, 
+        retry_after: Optional[int] = None, 
         details: Optional[Dict[str, Any]] = None
     ):
         """Initialize the rate limit exception.

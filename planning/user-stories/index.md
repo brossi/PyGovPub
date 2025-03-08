@@ -12,7 +12,7 @@ Example: `LM-BT-001` = Legislative Monitoring - Bill Tracking - Story #001
 
 ### Core SDK Features (CORE)
 - [CORE-001](./core/CORE-001.md) - Unified Data Response Format 📝
-- [CORE-002](./core/CORE-002.md) - Comprehensive Error Handling 📝
+- [CORE-002](./core/CORE-002.md) - Comprehensive Error Handling 🚧
 
 ### Developer Experience (DX)
 - [DX-001](./devops/DX-001.md) - SDK Health Check and Validation 📝
@@ -21,7 +21,7 @@ Example: `LM-BT-001` = Legislative Monitoring - Bill Tracking - Story #001
 - [DX-004](./devops/DX-004.md) - Development Logging and Debugging 📝
 
 ### Authentication & Security (AUTH)
-- [AUTH-001](./authentication/AUTH-001.md) - API Authentication Management 📝
+- [AUTH-001](./authentication/AUTH-001.md) - API Authentication Management ✅
 
 ### Legislative Monitoring (LM)
 #### Bill Tracking (BT)
