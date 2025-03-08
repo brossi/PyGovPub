@@ -6,16 +6,13 @@ authentication, key management, and request execution.
 """
 
 import os
-import sys
 import pytest
 import asyncio
-from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch, AsyncMock
 import aiohttp
 from aiohttp import ClientResponse, RequestInfo
 
-# Fix import path
-sys.path.insert(0, 'src')
+# Direct imports using conftest.py path configuration
 from pygovpub.auth.auth_manager import AuthManager, ApiKeyStore
 from pygovpub.auth.models import ApiSource, AuthType
 from pygovpub.auth.rate_limiter import ThrottleStrategy

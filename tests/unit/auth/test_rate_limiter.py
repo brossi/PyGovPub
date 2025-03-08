@@ -6,17 +6,12 @@ API rate limit tracking and enforcement.
 """
 
 import asyncio
-import os
-import sys
 import pytest
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from unittest.mock import MagicMock, patch
 
-# Fix import path with absolute paths
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, '../../../'))
-sys.path.insert(0, project_root)
-
+# Direct imports using conftest.py path configuration
 from pygovpub.auth.models import ApiSource
 from pygovpub.auth.rate_limiter import RateLimiter, ThrottleStrategy
 
@@ -35,10 +30,11 @@ async def test_track_request_in_memory(rate_limiter):
     # Initial state
     initial_remaining = rate_limiter._memory_limits[source]["remaining"]
     
-    # Track a request with rate limit headers
+    # Track a request with rate limit headers (using timezone-aware datetime)
+    future_time = datetime.now(ZoneInfo("UTC")) + timedelta(minutes=30)
     headers = {
         "x-ratelimit-remaining": "4980",
-        "x-ratelimit-reset": str(int((datetime.utcnow() + timedelta(minutes=30)).timestamp()))
+        "x-ratelimit-reset": str(int(future_time.timestamp()))
     }
     
     await rate_limiter.track_request(
@@ -60,16 +56,16 @@ async def test_check_rate_limit_allowed(rate_limiter):
     """Test checking rate limit when requests are allowed."""
     source = ApiSource.CONGRESS
     
-    # Set up state with available capacity
+    # Set up state with available capacity using timezone-aware datetimes
     rate_limiter._memory_limits[source]["remaining"] = 10
-    rate_limiter._memory_limits[source]["reset_time"] = datetime.utcnow() + timedelta(minutes=5)
+    rate_limiter._memory_limits[source]["reset_time"] = datetime.now(ZoneInfo("UTC")) + timedelta(minutes=5)
     
     # Check limit
     allowed, reset_time = await rate_limiter.check_rate_limit(source)
     
     # Verify result
     assert allowed is True
-    assert reset_time > datetime.utcnow()
+    assert reset_time > datetime.now(ZoneInfo("UTC"))
 
 
 @pytest.mark.asyncio
@@ -77,9 +73,9 @@ async def test_check_rate_limit_exceeded(rate_limiter):
     """Test checking rate limit when limit is exceeded."""
     source = ApiSource.CONGRESS
     
-    # Set up state with no capacity
+    # Set up state with no capacity (using timezone-aware datetime)
     rate_limiter._memory_limits[source]["remaining"] = 0
-    reset_time = datetime.utcnow() + timedelta(minutes=5)
+    reset_time = datetime.now(ZoneInfo("UTC")) + timedelta(minutes=5)
     rate_limiter._memory_limits[source]["reset_time"] = reset_time
     
     # Check limit
@@ -95,16 +91,16 @@ async def test_check_rate_limit_reset(rate_limiter):
     """Test rate limit reset after reset time passes."""
     source = ApiSource.CONGRESS
     
-    # Set up state with expired reset time
+    # Set up state with expired reset time (using timezone-aware datetime)
     rate_limiter._memory_limits[source]["remaining"] = 0
-    rate_limiter._memory_limits[source]["reset_time"] = datetime.utcnow() - timedelta(minutes=5)
+    rate_limiter._memory_limits[source]["reset_time"] = datetime.now(ZoneInfo("UTC")) - timedelta(minutes=5)
     
     # Check limit
     allowed, reset_time = await rate_limiter.check_rate_limit(source)
     
     # Verify result - should reset and allow request
     assert allowed is True
-    assert reset_time > datetime.utcnow()
+    assert reset_time > datetime.now(ZoneInfo("UTC"))
     assert rate_limiter._memory_limits[source]["remaining"] == rate_limiter._memory_limits[source]["limit"]
 
 
@@ -113,9 +109,9 @@ async def test_pre_request_allowed(rate_limiter):
     """Test pre-request check when allowed."""
     source = ApiSource.CONGRESS
     
-    # Set up state with available capacity
+    # Set up state with available capacity (using timezone-aware datetime)
     rate_limiter._memory_limits[source]["remaining"] = 10
-    rate_limiter._memory_limits[source]["reset_time"] = datetime.utcnow() + timedelta(minutes=5)
+    rate_limiter._memory_limits[source]["reset_time"] = datetime.now(ZoneInfo("UTC")) + timedelta(minutes=5)
     
     # Pre-request check
     await rate_limiter.pre_request(source)
@@ -151,9 +147,9 @@ async def test_pre_request_exception_strategy(rate_limiter):
     source = ApiSource.CONGRESS
     rate_limiter.strategy = ThrottleStrategy.EXCEPTION
     
-    # Set up state with no capacity
+    # Set up state with no capacity (using timezone-aware datetime)
     rate_limiter._memory_limits[source]["remaining"] = 0
-    rate_limiter._memory_limits[source]["reset_time"] = datetime.utcnow() + timedelta(minutes=5)
+    rate_limiter._memory_limits[source]["reset_time"] = datetime.now(ZoneInfo("UTC")) + timedelta(minutes=5)
     
     # Pre-request check should raise exception
     with pytest.raises(Exception) as exc_info:
@@ -169,9 +165,10 @@ async def test_wait_for_capacity(rate_limiter):
     source = ApiSource.CONGRESS
     
     # Set up checks to return False once then True
+    # Using timezone-aware datetimes
     check_results = [
-        (False, datetime.utcnow() + timedelta(seconds=0.1)),  # First check: not allowed
-        (True, datetime.utcnow() + timedelta(minutes=5))      # Second check: allowed
+        (False, datetime.now(ZoneInfo("UTC")) + timedelta(seconds=0.1)),  # First check: not allowed
+        (True, datetime.now(ZoneInfo("UTC")) + timedelta(minutes=5))      # Second check: allowed
     ]
     
     # Mock check_rate_limit to return our predetermined results
@@ -189,7 +186,9 @@ async def test_wait_for_capacity(rate_limiter):
 async def test_parse_headers_congress(rate_limiter):
     """Test parsing Congress.gov rate limit headers."""
     source = ApiSource.CONGRESS
-    reset_time = int((datetime.utcnow() + timedelta(minutes=30)).timestamp())
+    # Use timezone-aware datetime
+    future_time = datetime.now(ZoneInfo("UTC")) + timedelta(minutes=30)
+    reset_time = int(future_time.timestamp())
     
     headers = {
         "x-ratelimit-remaining": "4980",
@@ -203,7 +202,8 @@ async def test_parse_headers_congress(rate_limiter):
     # Parse reset time
     parsed_reset = rate_limiter._parse_reset_time(headers, source)
     assert parsed_reset
-    assert abs((parsed_reset - datetime.fromtimestamp(reset_time)).total_seconds()) < 1
+    # Use timezone-aware datetime for comparison
+    assert abs((parsed_reset - datetime.fromtimestamp(reset_time, tz=ZoneInfo("UTC"))).total_seconds()) < 1
 
 
 @pytest.mark.asyncio
@@ -222,7 +222,8 @@ async def test_parse_headers_govinfo(rate_limiter):
     assert remaining == 950
     
     # Parse reset time
-    now = datetime.utcnow()
+    # Use timezone-aware datetime for comparisons
+    now = datetime.now(ZoneInfo("UTC"))
     parsed_reset = rate_limiter._parse_reset_time(headers, source)
     assert parsed_reset
     

@@ -9,15 +9,8 @@ import pytest
 from sqlmodel import Session, SQLModel, create_engine
 from datetime import datetime
 from zoneinfo import ZoneInfo
-import os
-import sys
 
-# Make import path absolute instead of relative
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, '../../../'))
-src_dir = os.path.join(project_root, 'src')
-sys.path.insert(0, src_dir)
-
+# Direct import using conftest.py path settings
 from pygovpub.auth.models import ApiConfiguration, ApiUsage, ApiSource, AuthType
 
 
