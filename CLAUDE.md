@@ -109,6 +109,15 @@ PyGovPub is a Python SDK that provides unified access to U.S. Federal Government
 - **Type Checking**: `mypy .`
 - **Format Code**: `black .`
 - **Update Timestamps**: `utilities/update_timestamp.sh <markdown_file>` (updates "Last Updated" field in markdown files to current UTC time)
+  - Note: Process one file at a time; for multiple files, run separate commands
+  - Optional section ID: `utilities/update_timestamp.sh <markdown_file> <section_id>`
+- **Coverage Analysis**:
+  - Basic usage: `./utilities/projected_coverage.py` (analyzes all stubs)
+  - Analyze specific package: `./utilities/projected_coverage.py --package pygovpub.auth`
+  - View latest coverage report: `./utilities/projected_coverage.py --report`
+  - Check coverage history: `./utilities/projected_coverage.py --history`
+  - Analyze all packages: `./utilities/projected_coverage.py --all-packages`
+  - Detailed verbose output: `./utilities/projected_coverage.py --verbose`
 
 IMPORTANT: Always use the Python 3.13 virtual environment in `venv/` for all development. This ensures consistent dependencies and package versions across all development environments.
 
@@ -166,7 +175,7 @@ Test stubs are automatically excluded from test runs using these patterns:
 
 ### Coverage Projection
 
-Use the `projected_coverage.py` tool to predict coverage after stub implementation:
+Use the `projected_coverage.py` tool to predict coverage after stub implementation and track coverage history:
 
 ```bash
 # Basic usage - analyzes auth package and all stubs
@@ -174,7 +183,25 @@ Use the `projected_coverage.py` tool to predict coverage after stub implementati
 
 # Custom analysis
 ./utilities/projected_coverage.py --package pygovpub.core --stub-dir tests/unit/core
+
+# View latest coverage report
+./utilities/projected_coverage.py --report
+
+# View coverage history
+./utilities/projected_coverage.py --history
 ```
+
+The tool automatically stores coverage results in `.coverage_history.json` for quick reference. This history file maintains records of test coverage over time, including:
+- Overall coverage percentage
+- Module-specific coverage statistics
+- Uncovered line numbers
+- Timestamp of each test run
+
+This feature allows for tracking coverage progress without re-running tests, which is especially useful for:
+- Checking current test coverage status
+- Comparing coverage between different modules
+- Identifying persistent uncovered lines
+- Documenting coverage improvements over time
 
 ### Test Stub Best Practices
 
@@ -267,6 +294,7 @@ The `planning/qa/` directory contains:
 ### Development Tools
 - `utilities/` - Development and maintenance scripts
   - `update_timestamp.sh` - Updates markdown file timestamps
+  - `projected_coverage.py` - Analyzes test coverage, tracks history, and projects future coverage with stubs
   - Additional development utilities
 
 ## Development Process
@@ -314,6 +342,24 @@ Each phase must pass the quality gates defined in `08-completion.md`:
 6. Documentation complete
 7. Commit hash recorded
 
+### Test Maintenance Best Practices
+When adding new features or command-line options, remember to update all test mocks:
+
+1. **Update all test mocks**: When adding a new parameter to any function or CLI, add it to all mock objects
+   - Example: After adding `--all-packages` to a CLI tool, add `all_packages = False` to all mock argument objects
+   - This applies even to tests not directly testing the new functionality
+   
+2. **Match exact output formats**: When mocking output formats (like reports), include all section markers and formatting
+   - Example: Include section markers like `---------- coverage:` and respect exact spacing/indentation
+   - Use real command output as reference for creating test mock data
+   
+3. **Fix failing tests immediately**: Don't let failing tests linger
+   - Postponed fixes can mask real problems
+   - Fixed tests increase confidence when making further changes
+   - Always run related tests after fixing a specific test
+
+These practices prevent the "broken windows effect" in your test suite - small failures that lead to bigger problems over time [Claude.Anthropic.3.7.Sonnet-20250308-TestMaintenancePractices]
+
 ### API Integration Requirements
 When working with external APIs:
 1. Congress.gov API
@@ -345,6 +391,13 @@ Implement tests according to the test requirements specified in:
 - Test coverage requirements in `planning/README.md`
 
 All code should be developed test-first following the process in `checklist-guide.md`.
+
+For coverage verification:
+1. Run `./utilities/projected_coverage.py` after implementing new tests
+2. Check the `--report` command to verify current coverage metrics
+3. Use the coverage history to track improvements over time
+4. Aim for 100% coverage on critical paths as mandated by quality gates
+5. Document any intentionally uncovered lines with justification
 
 ## Implementation Philosophy
 

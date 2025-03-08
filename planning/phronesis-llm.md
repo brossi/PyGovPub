@@ -45,14 +45,14 @@ ENV|P3.13_venv|check_compat|pin_vers|req:activate_venv
 WF|rd→rt→wt→impl→verify→✓|NO_COMPLETE_WITHOUT_TEST_PASS|follow_patterns
 AUTH|mgr+models+limiter|token_bucket|TZ-dt|validate_init|rate_track_by_key
 CORE|razor=simp_not_simpler|test_first|patterns>creativity|docs≡code|NO:premature_opt
-COV|proj_cov.py=find_gaps|# STUB: tests X-Y=line_marker|start:err_paths+edge|pytest --cov-report=term-miss|mark.asyncio=req_async
+COV|proj_cov.py=[BASIC,--pkg=X,--report,--hist,--all-pkgs,--verb]|# STUB: tests X-Y=line_marker|start:err_paths+edge|.coverage_history.json=tracker|mark.asyncio=req_async
 ```
 
 ## Segment Legend
 TS=Test Structure|IR=Import Resolution|DT=Datetime Handling|P3.13=Python 3.13|TEST=Testing Practice|MOCK=Mock Services|CMD=Commands|ENV=Environment|WF=Workflow|AUTH=Auth Module|CORE=Core Principles|COV=Coverage Strategies
 
 ## Abbrev Legend  
-pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipulation|ZI=ZoneInfo|err=error|ctx_mgr=context manager|dec=decorator|indep=independent|rd=read docs|rt=run tests|wt=write tests|impl=implement|simp=simple|opt=optimization|m=mock|pkg_r=pkg_resources|field_v=field_validator|v=validator|fk=Field(discriminator_key)|importlib.m=importlib.metadata|proj_cov=projected_coverage|term-miss=term-missing|req_async=required_for_async_tests
+pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipulation|ZI=ZoneInfo|err=error|ctx_mgr=context manager|dec=decorator|indep=independent|rd=read docs|rt=run tests|wt=write tests|impl=implement|simp=simple|opt=optimization|m=mock|pkg_r=pkg_resources|field_v=field_validator|v=validator|fk=Field(discriminator_key)|importlib.m=importlib.metadata|proj_cov=projected_coverage|term-miss=term-missing|req_async=required_for_async_tests|BASIC=basic command|--pkg=package parameter|--hist=history parameter|--all-pkgs=all-packages parameter|--verb=verbose parameter|tracker=coverage history tracker
 
 ## Expanded Knowledge
 
@@ -130,7 +130,13 @@ pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipula
 - Avoid premature optimization
 
 ### Coverage Strategies (COV)
-- Use projected_coverage.py to identify untested code areas
+- Use projected_coverage.py to identify untested code areas:
+  - Basic: `./utilities/projected_coverage.py`
+  - Custom: `./utilities/projected_coverage.py --package pygovpub.auth`
+  - Report: `./utilities/projected_coverage.py --report`
+  - History: `./utilities/projected_coverage.py --history`
+  - All packages: `./utilities/projected_coverage.py --all-packages`
+  - Verbose: `./utilities/projected_coverage.py --verbose`
 - Mark test stubs with `# STUB: This tests lines X-Y` format
 - Start with error paths and edge cases when improving coverage
 - Use `pytest --cov-report=term-missing` to locate specific uncovered lines
@@ -139,6 +145,10 @@ pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipula
 - Look for untested parameter validation in functions
 - For auth module, target throttling strategies and API source handling
 - Test component integration (e.g., auth_manager with rate_limiter)
+- Coverage history stored in `.coverage_history.json` for tracking
+- Set targeted goals for specific modules using the tool
+- Tool handles missing coverage XML files gracefully
+- Include new modules in coverage analysis early to establish baseline
 
 ## Example Patterns
 
@@ -189,3 +199,68 @@ class VersionCompatibility(BaseModel):
 ```
 
 `[Claude.Anthropic.3.7.Sonnet-20250308-TokenEfficientKnowledge-2025-03-08-20:12-UTC]`
+
+## LEARNINGS-002
+
+```
+COV2|fixed_XML=graceful_err|fallback=term-miss|neg_val=prevented|fixed_-0.0%
+COV2|cmd=[--all-pkgs,--pkg,--report,--hist,--verb]|history=.json_persist|early_baseline=best
+COV2|stubs=miss_only|err_msg=improved|async_fn=fixed|combined_report=implemented
+UTIL|update_ts.sh=one_file|NO:batch_files|second_arg=section_id|run_separate_cmds|check_usage
+TEST|update_mocks=all_params|match_fmt=exact|fix_immed=critical|verify=related|check=windows
+```
+
+## Segment Legend for LEARNINGS-002
+COV2=Coverage Tool Improvements|UTIL=Utility Scripts|TEST=Test Maintenance
+
+## Abbrev Legend for LEARNINGS-002
+fixed_XML=fixes for XML file handling|graceful_err=graceful error handling|fallback=fallback reporting mechanism|term-miss=term-missing format|neg_val=negative values|fixed_-0.0%=fixed negative zero percentage display|cmd=command options|--all-pkgs=all-packages parameter|--pkg=package parameter|--report=report parameter|--hist=history parameter|--verb=verbose parameter|history=coverage history|.json_persist=JSON file persists between runs|early_baseline=early baseline metrics|stubs=test stubs|miss_only=only counts missing lines|err_msg=error messages|async_fn=async functions|combined_report=combined package reporting|update_ts.sh=update_timestamp.sh script|one_file=processes one file at a time|NO:batch_files=does not support batch processing|second_arg=section_id=second argument interpreted as section ID|run_separate_cmds=run separate commands for each file|check_usage=check script usage before retrying|update_mocks=update all mock objects|all_params=include all parameters|match_fmt=match exact format|fix_immed=fix immediately|critical=critical for reliable testing|verify=verify with related tests|check=check for broken windows
+
+## Expanded Knowledge for LEARNINGS-002
+
+### Coverage Tool Improvements (COV2)
+- XML file handling has been fixed to handle missing files gracefully
+- Fallback reporting uses term-missing when XML parsing fails
+- Negative values in coverage calculations are now prevented
+- Fixed display issue showing "-0.0%" in gain column
+- Added command options for flexible analysis:
+  - `--all-packages`: Analyze multiple packages together
+  - `--package`: Target specific package only
+  - `--report`: Show latest report without re-analyzing
+  - `--history`: Display coverage trends over time
+  - `--verbose`: Show detailed line number information
+- Coverage history in `.coverage_history.json` persists between runs
+- Best practice: establish baseline metrics for new modules early
+- Test stub analysis only counts lines that are actually missing
+- Error messages improved for better clarity and debugging
+- Fixed processing of async test functions
+- Implemented combined reporting across multiple packages
+
+### Utility Script Usage (UTIL)
+- `update_timestamp.sh` processes one file at a time
+- Correct usage: `utilities/update_timestamp.sh planning/phronesis.md`
+- Incorrect usage: `utilities/update_timestamp.sh file1.md file2.md`
+- Second argument is interpreted as section ID within first file
+- For multiple files, execute separate commands for each file
+- Check script usage and error messages before repeating failed patterns
+- This applies to many utility scripts designed for single-file processing
+
+### Test Maintenance After Feature Additions (TEST)
+- When adding new command-line options or parameters:
+  - Update all test mocks to include the new parameters
+  - Add default values for all mocks (e.g., `all_packages = False`)
+  - This applies even to tests not directly testing the new functionality
+- When mocking output formats like reports:
+  - Include all section markers exactly as they appear (e.g., `---------- coverage:`)
+  - Match exact spacing, indentation and formatting patterns
+  - Test using real output as reference for creating mock data
+- Fix failing tests immediately:
+  - Postponed fixes mask real problems
+  - Failing tests make it harder to detect new regressions
+  - Fixed tests increase confidence in code changes
+- After fixing a test, run related tests to verify no side effects
+- Regularly check for "broken windows" in tests (minor failures that indicate deeper issues)
+
+`[Claude.Anthropic.3.7.Sonnet-20250308-TestMaintenancePractices-2025-03-08-22:00-UTC]`
+
+`[Claude.Anthropic.3.7.Sonnet-20250308-CoverageToolImprovements-2025-03-08-21:46-UTC]`
