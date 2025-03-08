@@ -310,17 +310,23 @@ def test_get_coverage_from_report_fallback(mock_run):
     # Mock the subprocess run result
     mock_result = MagicMock()
     mock_result.stdout = """
-    Name                    Stmts   Miss  Cover   Missing
-    -----------------------------------------------------
-    mypackage/file1.py         50     10    80%   5-10, 15, 20-23
-    mypackage/file2.py         30      5    83%   1, 5, 10-12
-    -----------------------------------------------------
-    TOTAL                      80     15    81%
+---------- coverage: platform darwin, python 3.13.2-final-0 -----------
+Name                    Stmts   Miss  Cover   Missing
+-------------------------------------------------------------
+mypackage/file1.py         50     10    80%   5-10, 15, 20-23
+mypackage/file2.py         30      5    83%   1, 5, 10-12
+-------------------------------------------------------------
+TOTAL                      80     15    81%
+
+================================================= 5 passed, 2 warnings ==
     """
     mock_run.return_value = mock_result
     
     analyzer = projected_coverage.CoverageAnalyzer("mypackage", ["test_dir"])
-    coverage = analyzer._get_coverage_from_report()
+    
+    # Patch print to suppress stderr output
+    with patch('builtins.print'):
+        coverage = analyzer._get_coverage_from_report()
     
     # Verify results
     assert "mypackage/file1.py" in coverage
@@ -395,6 +401,7 @@ def test_main_default_flow(mock_run, mock_print):
             stub_dirs = []
             scan_all = False
             verbose = False
+            all_packages = False  # Added for new functionality
         
         with patch.object(projected_coverage.argparse.ArgumentParser, 'parse_args', return_value=MockArgs()):
             projected_coverage.main()
