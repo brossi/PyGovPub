@@ -1,0 +1,179 @@
+# PyGovPub Development Knowledge - Token-Efficient Format
+
+# Phronesis Compression Guidelines
+
+These instructions describe how to transform verbose, human-readable content into a compact, token-efficient string while preserving all essential semantics. Follow these steps:
+
+1. **Segment & Label**
+   - Divide the original text into logical sections (e.g., Test Directory Organization, Import Resolution, etc.).
+   - Assign each section a short label (e.g., "TS" for Test Structure, "IR" for Import Resolution).
+
+2. **Extract Essentials**
+   - Remove any filler language or narrative.
+   - Retain only the core directives, challenges, solutions, and key learnings.
+
+3. **Abbreviate & Compress**
+   - Replace longer phrases with domain-specific abbreviations (e.g., "timezone-aware datetime" → "TZ-Aware dt", "Python 3.13 Compatibility" → "P3.13").
+   - Ensure each abbreviation conveys the original meaning.
+
+4. **Linear, Delimited Formatting**
+   - Reassemble the content into a single, structured string using clear delimiters (such as vertical bars `|`).
+   - This structure should reflect the hierarchy and relationships between sections.
+
+5. **Validation**
+   - Verify that the compressed string can be decoded back into a fully intelligible, human-readable form without losing any critical details.
+
+**Final Output Requirement:**
+Compress the content into one structured string containing only essential abbreviations and delimiters. Do not include any explanatory commentary, verbose headers, or duplicate information. For example:
+
+    TS|tests/unit/pygovpub/{module}/test_{file}.py|pkg_imports|conftest.py=path_resolver|NO:sys.path,...
+
+Focus solely on encoding the key points and their relationships in the most token-efficient manner possible.
+
+## LEARNINGS-001
+
+```
+TS|tests/{module}/test_{file}.py|pkg_imports|conftest=path_cfg|NO:sys.path,src/tests,nested|MUST:mirror_pkg_struct
+IR|run_from_root|from pygovpub.X import Y|NO:rel_imports,path_manip
+DT|TZ-aware=req|dt.now(ZI("UTC"))|dt(y,m,d,tz=ZI("UTC"))|naive+aware=err
+P3.13|m.Mock(spec=T)|ctx_mgr>dec|model_validate>parse|match[T]/assert
+P3.13|importlib.m>pkg_r|field_v>v|@classmethod=req|fk=Literal["x","y"]
+TEST|isolate|indep_fixtures|clean_after|no_globals|req:test_before_impl
+MOCK|mock.server=API|fixtures/X=test_data|recorder=replay|req:predictable_output
+CMD|pytest|pytest path/mod|pytest file::fn|pytest --cov=pkg|LINT:ruff,black,mypy
+ENV|P3.13_venv|check_compat|pin_vers|req:activate_venv
+WF|rd→rt→wt→impl→verify→✓|NO_COMPLETE_WITHOUT_TEST_PASS|follow_patterns
+AUTH|mgr+models+limiter|token_bucket|TZ-dt|validate_init|rate_track_by_key
+CORE|razor=simp_not_simpler|test_first|patterns>creativity|docs≡code|NO:premature_opt
+```
+
+## Segment Legend
+TS=Test Structure|IR=Import Resolution|DT=Datetime Handling|P3.13=Python 3.13|TEST=Testing Practice|MOCK=Mock Services|CMD=Commands|ENV=Environment|WF=Workflow|AUTH=Auth Module|CORE=Core Principles
+
+## Abbrev Legend  
+pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipulation|ZI=ZoneInfo|err=error|ctx_mgr=context manager|dec=decorator|indep=independent|rd=read docs|rt=run tests|wt=write tests|impl=implement|simp=simple|opt=optimization|m=mock|pkg_r=pkg_resources|field_v=field_validator|v=validator|fk=Field(discriminator_key)|importlib.m=importlib.metadata
+
+## Expanded Knowledge
+
+### Test Structure (TS)
+- Pattern: `tests/{module}/test_{file}.py` must mirror `src/pygovpub/{module}/{file}.py`
+- Use package imports only, never relative imports
+- conftest.py handles all path resolution centrally
+- NEVER: manipulate sys.path, use src/tests/ directory, create nested test dirs
+
+### Import Resolution (IR)
+- Always run tests from project root
+- Correct: `from pygovpub.auth.models import ApiCredential`
+- Wrong: `import sys; sys.path.insert(0, 'src')` or relative imports
+
+### Datetime Handling (DT)
+- Always use timezone-aware datetimes with Python 3.13
+- Correct: `datetime.now(ZoneInfo("UTC"))`
+- In tests: `datetime(2023, 1, 1, tzinfo=ZoneInfo("UTC"))`
+- Mixing naive and aware datetimes causes errors
+
+### Python 3.13 Specifics (P3.13)
+- Use `mock.Mock(spec=Type)` for proper type hinting
+- Prefer context managers over decorators
+- Use `model_validate` instead of `parse_obj`
+- Use `assert_called_with` or structural pattern matching
+- Use `importlib.metadata` instead of deprecated `pkg_resources`
+- Use `@field_validator` instead of deprecated `@validator` in Pydantic
+- Add `@classmethod` decorator to field validators in Pydantic v2
+- Use `Literal` types for fixed sets of string options
+
+### Testing Practices (TEST)
+- Isolate tests completely
+- Use independent fixtures
+- Clean up resources after tests
+- Avoid global state
+- Write tests BEFORE implementation
+
+### Mocking Services (MOCK)
+- Use mock.server for external APIs
+- Store test fixtures in tests/fixtures/
+- Use recorder.py for API request/response replay
+- Make sure mocks provide predictable outputs
+
+### Commands (CMD)
+- All tests: `pytest`
+- Module tests: `pytest tests/pygovpub/auth/`
+- Single test: `pytest file::function_name`
+- Coverage: `pytest --cov=pygovpub`
+- Linting: `ruff check .` and `black .`
+- Type checking: `mypy .`
+
+### Environment (ENV)
+- Use Python 3.13 virtual environment
+- Check dependency compatibility
+- Pin specific versions in requirements.txt
+- Always activate venv before development work
+
+### Workflow (WF)
+- Process: read docs → run tests → write tests → implement → verify → update checklist
+- NEVER mark tasks complete without passing tests
+- Follow established patterns in similar modules
+
+### Auth Module (AUTH)
+- Components: auth_manager.py, models.py, rate_limiter.py
+- Uses token bucket algorithm
+- Uses timezone-aware datetimes
+- Validates credentials on initialization
+- Rate limiting tracked by API key
+
+### Core Principles (CORE)
+- Einstein's razor: as simple as possible, but not simpler
+- Test first, then implement
+- Follow established patterns over creative solutions
+- Keep documentation and code in sync
+- Avoid premature optimization
+
+## Example Patterns
+
+```python
+# Correct datetime handling in Python 3.13
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# Create timezone-aware datetime
+now = datetime.now(ZoneInfo("UTC"))
+specific = datetime(2023, 1, 1, tzinfo=ZoneInfo("UTC"))
+
+# Correct test structure
+# File: tests/pygovpub/auth/test_models.py
+from pygovpub.auth.models import ApiCredential
+
+def test_api_credential_validation():
+    # Test implementation - WRITE BEFORE IMPLEMENTATION
+    pass
+
+# Modern dependency checking with importlib.metadata
+import importlib.metadata
+
+# Get installed packages
+installed_packages = {dist.metadata["Name"].lower() 
+                     for dist in importlib.metadata.distributions()}
+
+# Pydantic v2 field validation
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional
+
+class VersionCompatibility(BaseModel):
+    """API version compatibility information."""
+    
+    major: int
+    minor: int
+    patch: Optional[int] = None
+    min_supported: str = Field(...)
+    max_supported: Optional[str] = None
+    
+    @field_validator("min_supported", "max_supported")
+    @classmethod
+    def validate_version_format(cls, v):
+        """Validate version string format."""
+        if v is not None and not all(part.isdigit() for part in v.split(".")):
+            raise ValueError(f"Invalid version format: {v}")
+        return v
+```
+
+`[Claude.Anthropic.3.7.Sonnet-20250219-TokenEfficientKnowledge-2025-03-08-UTC]`

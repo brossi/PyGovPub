@@ -21,7 +21,7 @@ from urllib.parse import urljoin
 import aiohttp
 import requests
 from cryptography.fernet import Fernet
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, select
 
 from pygovpub.auth.models import ApiConfiguration, ApiSource, AuthType, ApiUsage
@@ -46,7 +46,8 @@ class VersionCompatibility(BaseModel):
     min_supported: str = Field(...)
     max_supported: Optional[str] = None
     
-    @validator("min_supported", "max_supported")
+    @field_validator("min_supported", "max_supported")
+    @classmethod
     def validate_version_format(cls, v):
         """Validate version string format."""
         if v is not None and not all(part.isdigit() for part in v.split(".")):

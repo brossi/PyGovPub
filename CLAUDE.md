@@ -101,13 +101,37 @@ PyGovPub is a Python SDK that provides unified access to U.S. Federal Government
 - **Environment Setup**: 
   - Activate the virtual environment: `source venv/bin/activate`
   - Install in development mode: `pip install -e .`
-- **Run Tests**: `pytest` (all tests) or `pytest tests/path/to/test_file.py::test_function`
+- **Run Tests**: 
+  - All tests: `pytest`
+  - Specific test: `pytest tests/unit/pygovpub/auth/test_models.py::test_function_name`
+  - With coverage: `pytest --cov=pygovpub tests/unit/`
 - **Linting**: `flake8` or `ruff check .`
 - **Type Checking**: `mypy .`
 - **Format Code**: `black .`
 - **Update Timestamps**: `utilities/update_timestamp.sh <markdown_file>` (updates "Last Updated" field in markdown files to current UTC time)
 
 IMPORTANT: Always use the Python 3.13 virtual environment in `venv/` for all development. This ensures consistent dependencies and package versions across all development environments.
+
+## Test Directory Structure
+
+All tests MUST follow these organization rules:
+
+1. **Location**: All tests must reside in the `/tests/` directory at project root
+   - Unit tests: `/tests/unit/pygovpub/...`
+   - Integration tests: `/tests/integration/...`
+   - Do NOT place tests in `/src/tests/` or create nested test directories
+
+2. **Structure**: Tests must mirror the package structure
+   - For module `src/pygovpub/auth/models.py`
+   - Test at `tests/unit/pygovpub/auth/test_models.py`
+
+3. **Imports**: Use package imports ONLY
+   - Correct: `from pygovpub.auth.models import ApiCredential`
+   - Incorrect: `import sys; sys.path.insert(0, 'src')`
+
+4. **Configuration**: All path resolution happens through conftest.py
+   - Do NOT manually modify sys.path in test files
+   - Use pytest fixtures for test dependencies
 
 ## Style Guidelines
 - **Imports**: Group imports: stdlib, third-party, local. Sort alphabetically within groups.
@@ -131,6 +155,9 @@ The `planning/` directory contains specification documents that should be consul
 - `planning/database-schema.md` - Database schema specification
 - `planning/checklist-guide.md` - Development process and quality guidelines
 - `planning/bill-version-codes.md` - Comprehensive guide to legislative bill version codes
+- `planning/dev-learnings.md` - Documented challenges and solutions from implementation
+- `planning/phronesis.md` - Knowledge repository of implementation experience
+- `planning/phronesis-llm.md` - LLM-optimized format of development insights
 
 ### Implementation Phases
 The `planning/actions/` directory contains phase-specific implementation guides:
@@ -208,8 +235,20 @@ Development MUST follow the phase sequence defined in `00-phase.md`:
 ### Checklist Management
 IMPORTANT: When implementing a phase, update the checklist in the corresponding action file (e.g., `planning/actions/02-auth001.md` for AUTH-001) AS YOU COMPLETE EACH TASK. Do not wait until the end to mark all items complete at once. So is it generated: [Claude.Anthropic.3.7.Sonnet-20250219-UpdatedInstructions-2025-03-08-04:01-UTC]
 
+#### Task Completion Verification Requirements
+CRITICAL FOR ALL AI AGENTS: Before marking ANY task as complete [x] in the phase checklists, you MUST:
+
+1. Run the full test suite: `pytest`
+2. Verify ALL tests pass without errors or warnings
+3. If any tests fail:
+   - Fix all errors related to your implementation
+   - Document any pre-existing errors that cannot be fixed in the current phase
+   - Explain your reasoning for leaving any errors unfixed
+
+DO NOT mark tasks as complete until you have verified through testing that your implementation works correctly and integrates properly with the existing codebase. This verification step is non-negotiable and essential for maintaining code quality.
+
 Each completed task should:
-1. Be marked with [x] immediately after implementation
+1. Be marked with [x] immediately after implementation AND verification
 2. Have its corresponding test implemented and passing
 3. Include any necessary documentation updates
 4. Follow the style guidelines and code quality standards
