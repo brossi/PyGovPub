@@ -27,7 +27,7 @@ def test_stub_api_configuration_validation():
 
 ```python
 def test_rate_limit_calculation():
-    # STUB: This tests lines 45-60 in rate_limiter.py
+    # STUB: This tests lines 45-60
     """Test that verifies rate limit calculation logic."""
     assert True
 ```
@@ -54,7 +54,7 @@ To make stubs useful for coverage projection, add comments that specify which li
 
 ```python
 def test_stub_advanced_api_usage():
-    # STUB: This tests lines 72-85 in auth_manager.py
+    # STUB: This tests lines 72-85
     """Test that validates advanced API usage patterns."""
     assert True
 ```
@@ -103,12 +103,12 @@ from pygovpub.auth.models import ApiConfiguration
 from pygovpub.auth.auth_manager import AuthManager
 
 def test_stub_auth_manager_initialization():
-    # STUB: This tests lines 15-30 in auth_manager.py
+    # STUB: This tests lines 15-30
     """Test that AuthManager initializes with correct defaults."""
     pass
 
 def test_stub_credential_validation():
-    # STUB: This tests lines 32-45 in auth_manager.py
+    # STUB: This tests lines 32-45
     """Test that credentials are properly validated."""
     pass
 ```

@@ -85,7 +85,7 @@ class CoverageAnalyzer:
                 module_to_file[module] = file_path
         
         # Pattern to find line coverage comments
-        line_comment_pattern = re.compile(r'#\s*This tests (?:line|lines) (\d+(?:-\d+)?(?:,\s*\d+(?:-\d+)?)*)')
+        line_comment_pattern = re.compile(r'#\s*(?:STUB:\s*)?This tests (?:line|lines) (\d+(?:-\d+)?(?:,\s*\d+(?:-\d+)?)*)')
         
         for stub_dir in self.stub_dirs:
             for stub_file in Path(stub_dir).glob('**/*.py'):

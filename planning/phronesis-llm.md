@@ -45,13 +45,14 @@ ENV|P3.13_venv|check_compat|pin_vers|req:activate_venv
 WF|rd→rt→wt→impl→verify→✓|NO_COMPLETE_WITHOUT_TEST_PASS|follow_patterns
 AUTH|mgr+models+limiter|token_bucket|TZ-dt|validate_init|rate_track_by_key
 CORE|razor=simp_not_simpler|test_first|patterns>creativity|docs≡code|NO:premature_opt
+COV|proj_cov.py=find_gaps|# STUB: tests X-Y=line_marker|start:err_paths+edge|pytest --cov-report=term-miss|mark.asyncio=req_async
 ```
 
 ## Segment Legend
-TS=Test Structure|IR=Import Resolution|DT=Datetime Handling|P3.13=Python 3.13|TEST=Testing Practice|MOCK=Mock Services|CMD=Commands|ENV=Environment|WF=Workflow|AUTH=Auth Module|CORE=Core Principles
+TS=Test Structure|IR=Import Resolution|DT=Datetime Handling|P3.13=Python 3.13|TEST=Testing Practice|MOCK=Mock Services|CMD=Commands|ENV=Environment|WF=Workflow|AUTH=Auth Module|CORE=Core Principles|COV=Coverage Strategies
 
 ## Abbrev Legend  
-pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipulation|ZI=ZoneInfo|err=error|ctx_mgr=context manager|dec=decorator|indep=independent|rd=read docs|rt=run tests|wt=write tests|impl=implement|simp=simple|opt=optimization|m=mock|pkg_r=pkg_resources|field_v=field_validator|v=validator|fk=Field(discriminator_key)|importlib.m=importlib.metadata
+pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipulation|ZI=ZoneInfo|err=error|ctx_mgr=context manager|dec=decorator|indep=independent|rd=read docs|rt=run tests|wt=write tests|impl=implement|simp=simple|opt=optimization|m=mock|pkg_r=pkg_resources|field_v=field_validator|v=validator|fk=Field(discriminator_key)|importlib.m=importlib.metadata|proj_cov=projected_coverage|term-miss=term-missing|req_async=required_for_async_tests
 
 ## Expanded Knowledge
 
@@ -128,6 +129,17 @@ pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipula
 - Keep documentation and code in sync
 - Avoid premature optimization
 
+### Coverage Strategies (COV)
+- Use projected_coverage.py to identify untested code areas
+- Mark test stubs with `# STUB: This tests lines X-Y` format
+- Start with error paths and edge cases when improving coverage
+- Use `pytest --cov-report=term-missing` to locate specific uncovered lines
+- Remember @pytest.mark.asyncio decorator for async function tests
+- Focus on testing all conditional branches and error handling
+- Look for untested parameter validation in functions
+- For auth module, target throttling strategies and API source handling
+- Test component integration (e.g., auth_manager with rate_limiter)
+
 ## Example Patterns
 
 ```python
@@ -176,4 +188,4 @@ class VersionCompatibility(BaseModel):
         return v
 ```
 
-`[Claude.Anthropic.3.7.Sonnet-20250219-TokenEfficientKnowledge-2025-03-08-UTC]`
+`[Claude.Anthropic.3.7.Sonnet-20250308-TokenEfficientKnowledge-2025-03-08-20:12-UTC]`
