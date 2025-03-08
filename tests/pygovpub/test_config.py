@@ -3,10 +3,13 @@ Tests for the configuration module.
 """
 
 import os
+import sys
 from unittest import mock
 
 import pytest
 
+# Fix import path
+sys.path.insert(0, 'src')
 from pygovpub.config import Config, Environment
 
 

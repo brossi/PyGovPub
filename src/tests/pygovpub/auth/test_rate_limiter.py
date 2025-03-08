@@ -6,17 +6,13 @@ API rate limit tracking and enforcement.
 """
 
 import asyncio
-import os
 import sys
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-# Fix import path with absolute paths
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, '../../../'))
-sys.path.insert(0, project_root)
-
+# Fix import path
+sys.path.insert(0, 'src')
 from pygovpub.auth.models import ApiSource
 from pygovpub.auth.rate_limiter import RateLimiter, ThrottleStrategy
 

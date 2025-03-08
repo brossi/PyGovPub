@@ -8,16 +8,10 @@ and usage tracking.
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 from datetime import datetime
-from zoneinfo import ZoneInfo
-import os
 import sys
 
-# Make import path absolute instead of relative
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, '../../../'))
-src_dir = os.path.join(project_root, 'src')
-sys.path.insert(0, src_dir)
-
+# Add source to path to fix imports
+sys.path.insert(0, 'src')
 from pygovpub.auth.models import ApiConfiguration, ApiUsage, ApiSource, AuthType
 
 
@@ -76,7 +70,7 @@ def test_api_usage_model(db_session):
         status_code=200,
         response_time_ms=150,
         rate_limit_remaining=999,
-        rate_limit_reset=datetime.now(ZoneInfo("UTC")),
+        rate_limit_reset=datetime.utcnow(),
         success=True
     )
     

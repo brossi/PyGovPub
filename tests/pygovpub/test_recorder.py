@@ -5,6 +5,7 @@ Tests for the recorder module.
 import asyncio
 import json
 import os
+import sys
 from pathlib import Path
 from unittest import mock
 
@@ -12,6 +13,8 @@ import httpx
 import pytest
 from pytest_mock import mocker
 
+# Fix import path
+sys.path.insert(0, 'src')
 from pygovpub.config import Config
 from pygovpub.mock.recorder import Recorder, recording_session
 

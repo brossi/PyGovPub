@@ -7,6 +7,7 @@ This module defines SQLModel classes for:
 """
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from enum import Enum
 from typing import Optional
 
@@ -41,10 +42,10 @@ class ApiConfiguration(SQLModel, table=True):
     rate_limit: int
     rate_limit_period: int = 3600  # in seconds (default 1 hour)
     active: bool = True
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(ZoneInfo("UTC")))
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        sa_column_kwargs={"onupdate": datetime.utcnow}
+        default_factory=lambda: datetime.now(ZoneInfo("UTC")),
+        sa_column_kwargs={"onupdate": lambda: datetime.now(ZoneInfo("UTC"))}
     )
 
 
@@ -56,7 +57,7 @@ class ApiUsage(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     source: ApiSource = Field(index=True)
     endpoint: str
-    request_time: datetime = Field(default_factory=datetime.utcnow)
+    request_time: datetime = Field(default_factory=lambda: datetime.now(ZoneInfo("UTC")))
     status_code: Optional[int] = None
     response_time_ms: Optional[int] = None
     rate_limit_remaining: Optional[int] = None

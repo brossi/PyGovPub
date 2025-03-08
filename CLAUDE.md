@@ -98,12 +98,16 @@ PyGovPub is a Python SDK that provides unified access to U.S. Federal Government
    - Transaction-based data updates
 
 ## Commands
-- **Setup**: `pip install -e .` (once implemented)
+- **Environment Setup**: 
+  - Activate the virtual environment: `source venv/bin/activate`
+  - Install in development mode: `pip install -e .`
 - **Run Tests**: `pytest` (all tests) or `pytest tests/path/to/test_file.py::test_function`
 - **Linting**: `flake8` or `ruff check .`
 - **Type Checking**: `mypy .`
 - **Format Code**: `black .`
 - **Update Timestamps**: `utilities/update_timestamp.sh <markdown_file>` (updates "Last Updated" field in markdown files to current UTC time)
+
+IMPORTANT: Always use the Python 3.13 virtual environment in `venv/` for all development. This ensures consistent dependencies and package versions across all development environments.
 
 ## Style Guidelines
 - **Imports**: Group imports: stdlib, third-party, local. Sort alphabetically within groups.

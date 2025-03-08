@@ -11,6 +11,7 @@ Congress.gov and GovInfo.gov, including:
 import base64
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from enum import Enum
 import json
 import logging
@@ -292,7 +293,10 @@ class AuthManager:
             
         # Construct URL
         base_url = auth_config["base_url"]
-        url = urljoin(base_url, endpoint)
+        # Ensure base_url doesn't have trailing slash and endpoint starts with slash
+        if not endpoint.startswith('/'):
+            endpoint = '/' + endpoint
+        url = base_url + endpoint
         
         return {
             "url": url,
@@ -346,7 +350,7 @@ class AuthManager:
             raise RateLimitExceededError(f"Rate limit exceeded: {e}")
             
         # Execute request
-        start_time = datetime.utcnow()
+        start_time = datetime.now(ZoneInfo("UTC"))
         success = False
         status_code = None
         error_message = None
@@ -354,35 +358,52 @@ class AuthManager:
         rate_limit_headers = None
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.request(
+            # Create a session
+            session = aiohttp.ClientSession()
+            try:
+                # Send the request and await the response
+                response = await session.request(
                     method=auth_request["method"],
                     url=auth_request["url"],
                     params=auth_request["params"],
                     headers=auth_request["headers"],
                     json=json_data,
                     timeout=timeout
-                ) as response:
-                    status_code = response.status
-                    response_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-                    rate_limit_headers = {k.lower(): v for k, v in response.headers.items()}
+                )
+                
+                # Process the response
+                status_code = response.status
+                response_time_ms = int((datetime.now(ZoneInfo("UTC")) - start_time).total_seconds() * 1000)
+                rate_limit_headers = {k.lower(): v for k, v in response.headers.items()}
+                
+                # Check for auth errors
+                if status_code == 401 or status_code == 403:
+                    error_message = f"Authentication failed: {status_code}"
+                    raise AuthenticationError(error_message)
                     
-                    # Check for auth errors
-                    if status_code == 401 or status_code == 403:
-                        error_message = f"Authentication failed: {status_code}"
-                        raise AuthenticationError(error_message)
-                        
-                    # Check other error status
-                    if status_code >= 400:
-                        error_message = f"Request failed with status {status_code}"
-                        response.raise_for_status()
-                        
-                    # Parse response body
-                    success = True
-                    if "application/json" in response.headers.get("Content-Type", ""):
-                        return await response.json()
-                    else:
-                        return {"text": await response.text()}
+                # Check other error status
+                if status_code >= 400:
+                    error_message = f"Request failed with status {status_code}"
+                    response.raise_for_status()
+                    
+                # Parse response body
+                success = True
+                # Process response content
+                if "application/json" in response.headers.get("Content-Type", ""):
+                    result = await response.json()
+                    # Only call release if the method exists (actual aiohttp has it, our mock might not)
+                    if hasattr(response, 'release'):
+                        await response.release()
+                    return result
+                else:
+                    text = await response.text()
+                    # Only call release if the method exists (actual aiohttp has it, our mock might not)
+                    if hasattr(response, 'release'):
+                        await response.release()
+                    return {"text": text}
+            finally:
+                # Make sure to close the session
+                await session.close()
         except AuthenticationError:
             # Re-raise authentication errors
             raise

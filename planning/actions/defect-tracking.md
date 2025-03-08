@@ -1,0 +1,162 @@
+# PyGovPub Defect Tracking
+
+**IMPORTANT**: After making updates to any defect entry in this file, use one of these commands to update timestamps:
+
+- To update all timestamps: `./utilities/update_timestamp.sh planning/actions/defect-tracking.md`
+- To update a specific section: `./utilities/update_timestamp.sh planning/actions/defect-tracking.md "Section Name"`
+- To revert the last update: `./utilities/update_timestamp.sh --revert planning/actions/defect-tracking.md`
+
+Example: `./utilities/update_timestamp.sh planning/actions/defect-tracking.md "Import Path and Module Structure Issue"`
+
+## Import Path and Module Structure Issue
+
+- Last Updated: 2025-03-08 05:19 UTC
+
+### Summary
+
+There is an issue with the Python module import system and how the tests are trying to access the package. This is preventing tests from running correctly and needs to be addressed before continuing with Phase 3 implementation (CORE-002).
+
+### Detailed Analysis
+
+1. **Import Path Problem**: The tests in `/tests/pygovpub/auth/test_models.py` are trying to import `from pygovpub.auth.models import ApiConfiguration, ApiUsage, ApiSource, AuthType` but Python can't find this module.
+
+2. **Editable Install Issue**: Despite running `pip install -e .` to install the package in development mode, the package isn't properly accessible. When we check for installed packages, we see `pygovpub-0.1.0.dist-info` but no actual package code in the site-packages directory.
+
+3. **Python Path Inconsistency**: The PYTHONPATH environment variable seems to be inconsistently applied. When running direct Python commands with PYTHONPATH set, imports work, but when running pytest, it fails.
+
+4. **Module Structure Confusion**: There's a duplicate directory structure with both `/src/tests` and `/tests` containing similar test files, which creates confusion about which tests should be run and how they should import modules.
+
+5. **Project Configuration**: The project uses a `src` layout but the package configuration in `pyproject.toml` may not be correctly set up to handle this layout properly.
+
+6. **UTC vs ZoneInfo Issue**: Originally, the code used the UTC constant from Python 3.13's datetime module, but this isn't available in Python 3.9. We fixed this by using ZoneInfo("UTC") instead, but the import path issue persists.
+
+7. **Virtual Environment Setup**: The project is intended to use Python 3.13 in the provided virtual environment, but commands were being run against the system Python 3.9, causing version compatibility issues.
+
+This appears to be a Python packaging/importing configuration issue that will likely require revising the project structure or adjusting how the tests import the package modules to ensure consistent behavior.
+
+### Code Snippets
+
+#### Test Import Statement (Failing)
+
+```python
+# From tests/pygovpub/auth/test_models.py
+"""
+Tests for authentication models.
+
+This module tests the SQLModel classes for API authentication
+and usage tracking.
+"""
+
+import pytest
+from sqlmodel import Session, SQLModel, create_engine
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import os
+import sys
+
+# Make import path absolute instead of relative
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '../../../'))
+src_dir = os.path.join(project_root, 'src')
+sys.path.insert(0, src_dir)
+
+from pygovpub.auth.models import ApiConfiguration, ApiUsage, ApiSource, AuthType  # This line fails
+```
+
+#### Module Being Imported 
+
+```python
+# From src/pygovpub/auth/models.py
+"""
+Database models for authentication and API usage tracking.
+
+This module defines SQLModel classes for:
+- ApiConfiguration: API connection and auth settings
+- ApiUsage: Rate limit tracking and API request logging
+"""
+
+from datetime import datetime
+from zoneinfo import ZoneInfo  # Updated from UTC
+from enum import Enum
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class ApiSource(str, Enum):
+    """Source API providers."""
+    
+    CONGRESS = "congress"
+    GOVINFO = "govinfo"
+
+
+class AuthType(str, Enum):
+    """Authentication types."""
+```
+
+#### Conftest Attempting to Fix Path
+
+```python
+# From conftest.py
+"""
+Pytest conftest.py file for PyGovPub project.
+
+This file sets up the test environment including path configuration to ensure imports work properly.
+"""
+
+import os
+import sys
+import subprocess
+
+# Update pip to avoid warnings
+try:
+    import pip
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'])
+    print("Pip has been updated to the latest version")
+except Exception as e:
+    print(f"Warning: Failed to update pip: {e}")
+
+# Add the parent directory and source directory to Python path so tests can find the modules
+project_root = os.path.abspath(os.path.dirname(__file__))
+src_path = os.path.join(project_root, 'src')
+sys.path.insert(0, project_root)
+sys.path.insert(0, src_path)
+
+# This is critical for the editable package to work properly
+os.environ['PYTHONPATH'] = src_path
+
+# Print the current Python path for debugging
+print("Python Path in conftest.py:", sys.path)
+```
+
+### Error Message
+
+```
+ImportError while importing test module '/Users/ben_mpa/Repos/AGENTIC_CONSULTING/Utilities/PyGovPub--Iterations/PyGovPub__base/tests/pygovpub/auth/test_models.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+tests/pygovpub/auth/test_models.py:21: in <module>
+    from pygovpub.auth.models import ApiConfiguration, ApiUsage, ApiSource, AuthType
+E   ModuleNotFoundError: No module named 'pygovpub.auth.models'
+```
+
+### Resolution Steps Attempted
+
+1. Added `pygovpub.auth.models` to `src/pygovpub/auth/__init__.py` exports
+2. Used `PYTHONPATH=src` when running pytest
+3. Added the src directory to sys.path in both conftest.py and test files
+4. Reinstalled the package with `pip uninstall -y pygovpub && pip install -e .`
+5. Ensured that the Python 3.13 virtual environment is activated with `source venv/bin/activate`
+
+### Recommended Next Steps
+
+1. Consider restructuring the project to use a flat layout instead of src layout if this isn't fixed soon
+2. Consolidate the test directories (eliminate the duplicate structure)
+3. Review the `pyproject.toml` settings to ensure they're compatible with the src layout
+4. Create a formal test structure guide in the documentation
+
+### Impact
+
+This issue is blocking progress on Phase 3 (CORE-002) as tests cannot be run properly to verify implementations.

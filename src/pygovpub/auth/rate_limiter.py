@@ -8,6 +8,7 @@ ensure compliance with API provider limits.
 import asyncio
 import time
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from enum import Enum
 from typing import Dict, Optional, Tuple
 
@@ -47,13 +48,13 @@ class RateLimiter:
             ApiSource.CONGRESS: {
                 "limit": 5000,
                 "remaining": 5000,
-                "reset_time": datetime.utcnow() + timedelta(hours=1),
+                "reset_time": datetime.now(ZoneInfo("UTC")) + timedelta(hours=1),
                 "requests": []
             },
             ApiSource.GOVINFO: {
                 "limit": 1000,
                 "remaining": 1000, 
-                "reset_time": datetime.utcnow() + timedelta(hours=1),
+                "reset_time": datetime.now(ZoneInfo("UTC")) + timedelta(hours=1),
                 "requests": []
             }
         }
@@ -141,7 +142,7 @@ class RateLimiter:
                         
                         if result and result.rate_limit_remaining is not None:
                             # Use DB data if available and current
-                            if result.rate_limit_reset and result.rate_limit_reset > datetime.utcnow():
+                            if result.rate_limit_reset and result.rate_limit_reset > datetime.now(ZoneInfo("UTC")):
                                 return result.rate_limit_remaining > 0, result.rate_limit_reset
                 except Exception:
                     # Fall back to memory tracking on database error
@@ -151,7 +152,7 @@ class RateLimiter:
             source_limits = self._memory_limits[source]
             
             # Check if reset time has passed
-            if source_limits["reset_time"] <= datetime.utcnow():
+            if source_limits["reset_time"] <= datetime.now(ZoneInfo("UTC")):
                 # Reset counters if reset time has passed
                 self._reset_memory_limits(source)
                 return True, source_limits["reset_time"]
@@ -173,7 +174,7 @@ class RateLimiter:
                 return
             
             # Calculate wait time with 1 second buffer
-            now = datetime.utcnow()
+            now = datetime.now(ZoneInfo("UTC"))
             if reset_time and reset_time > now:
                 wait_seconds = (reset_time - now).total_seconds() + 1
                 await asyncio.sleep(wait_seconds)
@@ -199,7 +200,7 @@ class RateLimiter:
             elif self.strategy == ThrottleStrategy.EXCEPTION:
                 wait_time = "unknown"
                 if reset_time:
-                    wait_time = str(reset_time - datetime.utcnow())
+                    wait_time = str(reset_time - datetime.now(ZoneInfo("UTC")))
                 raise Exception(f"Rate limit exceeded for {source}. Reset in {wait_time}")
             elif self.strategy == ThrottleStrategy.QUEUE:
                 # This would ideally use a more robust queue mechanism
@@ -225,7 +226,7 @@ class RateLimiter:
             self._memory_limits[source]["reset_time"] = reset_time
             
         # Track request time
-        now = datetime.utcnow()
+        now = datetime.now(ZoneInfo("UTC"))
         self._memory_limits[source]["requests"].append(now)
         
         # Clean old requests (keep last hour)
@@ -237,7 +238,7 @@ class RateLimiter:
     def _reset_memory_limits(self, source: ApiSource) -> None:
         """Reset memory limits after reset time passed."""
         self._memory_limits[source]["remaining"] = self._memory_limits[source]["limit"]
-        self._memory_limits[source]["reset_time"] = datetime.utcnow() + timedelta(hours=1)
+        self._memory_limits[source]["reset_time"] = datetime.now(ZoneInfo("UTC")) + timedelta(hours=1)
         
     def _parse_remaining(self, headers: Dict[str, str], source: ApiSource) -> Optional[int]:
         """Parse remaining requests from headers."""
@@ -252,10 +253,10 @@ class RateLimiter:
         if source == ApiSource.CONGRESS:
             reset_seconds = headers.get("x-ratelimit-reset")
             if reset_seconds:
-                return datetime.fromtimestamp(int(reset_seconds))
+                return datetime.fromtimestamp(int(reset_seconds), ZoneInfo("UTC"))
         elif source == ApiSource.GOVINFO:
             # GovInfo uses seconds until reset
             reset_in = headers.get("x-rate-limit-reset")
             if reset_in:
-                return datetime.utcnow() + timedelta(seconds=int(reset_in))
+                return datetime.now(ZoneInfo("UTC")) + timedelta(seconds=int(reset_in))
         return None

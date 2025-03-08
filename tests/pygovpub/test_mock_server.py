@@ -5,6 +5,7 @@ Tests for the mock server implementation.
 import asyncio
 import json
 import os
+import sys
 from pathlib import Path
 from unittest import mock
 
@@ -12,6 +13,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+# Fix import path
+sys.path.insert(0, 'src')
 from pygovpub.config import Config
 from pygovpub.mock.server import MockServer, create_app
 
