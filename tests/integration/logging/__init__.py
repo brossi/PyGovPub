@@ -1,0 +1,1 @@
+# Logging integration tests package
