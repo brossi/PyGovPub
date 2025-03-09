@@ -10,7 +10,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -63,7 +63,7 @@ class Recorder:
             raise ValueError(f"No configuration found for {api_name} API")
         
         # Create session ID
-        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         session_id = f"{api_name}_{timestamp}"
         
         # Create storage directory
@@ -73,7 +73,7 @@ class Recorder:
         # Create session
         self.sessions[session_id] = RecordingSession(
             recording_id=session_id,
-            start_time=datetime.utcnow(),
+            start_time=datetime.now(timezone.utc),
             api_name=api_name,
             base_url=config.apis[api_name].base_url,
             storage_path=storage_path
@@ -138,7 +138,7 @@ class Recorder:
             
             # Store request and response
             request_data = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "method": method,
                 "endpoint": endpoint,
                 "params": params,
@@ -218,7 +218,7 @@ class Recorder:
             "api_name": session.api_name,
             "base_url": session.base_url,
             "start_time": session.start_time.isoformat(),
-            "end_time": datetime.utcnow().isoformat(),
+            "end_time": datetime.now(timezone.utc).isoformat(),
             "request_count": len(session.requests),
             "requests": session.requests
         }
