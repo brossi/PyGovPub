@@ -9,11 +9,13 @@ import json
 import tempfile
 import argparse
 import pytest
+import re
 from unittest.mock import patch, mock_open, MagicMock, call
 import sys
 from pathlib import Path
 import ast
 from enum import Enum
+from collections import defaultdict
 
 # Add the utilities directory to the path so we can import projected_coverage
 sys.path.append(str(Path(__file__).parent.parent.parent.parent / "utilities"))
@@ -520,15 +522,85 @@ def test_stub_get_coverage_history_file_reading():
     # STUB: This tests lines 33-41
     assert True
 
-def test_stub_save_coverage_results_handle_exceptions():
+def test_save_coverage_results_handle_exceptions():
     """Tests error handling in save_coverage_results when file operations fail."""
-    # STUB: This tests lines 45-64
-    assert True
+    # This tests lines 45-64
+    
+    # Mock get_coverage_history to return a valid history
+    with patch.object(projected_coverage, 'get_coverage_history') as mock_get_history:
+        mock_history = {"history": [], "latest": None}
+        mock_get_history.return_value = mock_history
+        
+        # Mock open to raise an exception when writing
+        with patch('builtins.open', mock_open()) as mock_file:
+            mock_file.return_value.write.side_effect = IOError("Simulated IO error")
+            
+            # Mock print to verify output
+            with patch('builtins.print') as mock_print:
+                # Call the function with test data
+                test_data = {"package": "test", "overall_percentage": 100}
+                
+                # The function should not raise an exception even if file writing fails
+                projected_coverage.save_coverage_results(test_data)
+                
+                # Verify that get_coverage_history was called
+                mock_get_history.assert_called_once()
+                
+                # Verify that a timestamp was added to the data
+                assert "timestamp" in mock_history["history"][0]
+                
+                # Verify that latest was updated
+                assert mock_history["latest"] == mock_history["history"][0]
+                
+                # Verify that the function attempted to open the file for writing
+                mock_file.assert_called_once_with(projected_coverage.COVERAGE_HISTORY_FILE, 'w')
+                
+                # Verify that the warning message was printed
+                mock_print.assert_any_call(f"Warning: Could not save coverage results: Simulated IO error")
+                
+                # Verify that we still printed a success message
+                mock_print.assert_any_call(f"Coverage results saved to {projected_coverage.COVERAGE_HISTORY_FILE}")
 
-def test_stub_display_latest_coverage_with_missing_fields():
+def test_display_latest_coverage_with_missing_fields(temp_history_file):
     """Tests display_latest_coverage handling missing fields in coverage data."""
-    # STUB: This tests lines 68-104
-    assert True
+    # This tests lines 68-104
+    
+    # Create test data with missing fields
+    test_data = {
+        "timestamp": "2023-01-01T12:00:00",
+        "overall_percentage": 85.5,
+        # Missing total_statements and total_missing
+        "modules": [
+            {"file_path": "file1.py", "statements": 100, "missing": 15}
+            # Missing percentage field
+        ],
+        # Missing uncovered_lines
+    }
+    
+    # Save the incomplete test data to the history file
+    with open(temp_history_file, 'w') as f:
+        json.dump({"history": [], "latest": test_data}, f)
+    
+    # Mock stdout to capture output
+    with patch('sys.stdout', new_callable=MagicMock) as mock_stdout:
+        # Call the function
+        projected_coverage.display_latest_coverage()
+        
+        # Get the output text
+        calls = [call[0][0] for call in mock_stdout.write.call_args_list]
+        report_text = ''.join(calls)
+        
+        # Verify key elements were output despite missing fields
+        assert "LATEST COVERAGE REPORT" in report_text
+        assert "Timestamp: 2023-01-01T12:00:00" in report_text
+        assert "Overall coverage: 85.5%" in report_text
+        assert "file1.py" in report_text
+        
+        # Verify the function didn't crash due to missing fields
+        assert "Module" in report_text
+        assert "Stmts" in report_text
+        assert "Miss" in report_text
+        assert "Cover" in report_text
 
 
 # Sample implementation below - this won't work without mocking the RateLimiter class
@@ -597,9 +669,8 @@ def test_stub_parse_headers_error_cases():
     assert True
 
 
-def test_analyze_test_stubs_complex_patterns_1():
+def test_test_stubs_module_path_mapping():
     """Tests the module path to file mapping logic in analyze_test_stubs."""
-    # Implements test for lines 297-340
     # Tests the module path to file mapping in analyze_test_stubs
     
     analyzer = projected_coverage.CoverageAnalyzer("test.package", ["test_dir"])
@@ -951,46 +1022,442 @@ def test_from_test_file_name():
             assert analyzer.stub_coverage["utilities/helper.py"] == {100, 200, 300}
 
 
-def test_stub_analyze_test_stubs_exception_handling():
+def test_analyze_test_stubs_exception_handling():
     """Tests exception handling during test stub analysis."""
-    # STUB: This tests lines 275-276
-    assert True
+    # This tests lines 265-273
+    
+    analyzer = projected_coverage.CoverageAnalyzer("test.package", ["test_dir"])
+    
+    # Mock XML parsing to raise an exception
+    with patch('xml.etree.ElementTree.parse', side_effect=Exception("XML parsing error")), \
+         patch('os.path.exists', return_value=True), \
+         patch.object(analyzer, '_get_coverage_from_report') as mock_report_method, \
+         patch('builtins.print'):  # Suppress stderr output
+        
+        # Setup mock to return different values on first and second calls
+        fallback_coverage = {"test_file.py": {"statements": 100, "missing": 10, "missing_lines": set(range(1, 11))}}
+        mock_report_method.return_value = fallback_coverage
+        
+        # Call the method that should catch the exception and use fallback
+        coverage = analyzer.get_current_coverage()
+        
+        # Verify that the fallback method was called
+        mock_report_method.assert_called_once()
+        
+        # Verify that we got the fallback coverage data
+        assert coverage == fallback_coverage
+        assert analyzer.current_coverage == fallback_coverage
 
 
-def test_stub_scan_all_test_directories():
+def test_scan_all_test_directories():
     """Tests the scan_all option in main function that finds all test directories."""
-    # STUB: This tests lines 612-615
-    assert True
+    # This tests lines 612-615
+    
+    # Create a mock for os.walk that returns a set of test directories
+    mock_walk_data = [
+        ("/tests", ["unit", "integration"], []),
+        ("/tests/unit", ["auth", "core"], []),
+        ("/tests/unit/auth", [], ["test_auth_manager.py", "test_models.py"]),
+        ("/tests/unit/core", [], ["test_config.py"]),
+        ("/tests/integration", ["auth"], []),
+        ("/tests/integration/auth", [], ["test_auth_integration.py"]),
+        ("/src", ["pygovpub"], []),  # Non-test directory
+    ]
+    
+    # Create a mock args object with scan_all=True
+    class MockArgs:
+        report = False
+        history = False
+        package = "pygovpub.auth"
+        stub_dirs = []
+        scan_all = True
+        verbose = True
+        all_packages = False
+    
+    # Create a mock analyzer
+    mock_analyzer = MagicMock()
+    
+    # Patch necessary functions
+    with patch('os.walk', return_value=mock_walk_data), \
+         patch.object(projected_coverage.argparse.ArgumentParser, 'parse_args', return_value=MockArgs()), \
+         patch.object(projected_coverage, 'CoverageAnalyzer', return_value=mock_analyzer), \
+         patch('builtins.print'):
+        
+        # Call the main function
+        projected_coverage.main()
+        
+        # Check that CoverageAnalyzer was called with the correct directories
+        analyzer_args = projected_coverage.CoverageAnalyzer.call_args[0]
+        
+        # We expect the directories with test_*.py files to be included
+        assert "/tests/unit/auth" in analyzer_args[1]
+        assert "/tests/unit/core" in analyzer_args[1]
+        assert "/tests/integration/auth" in analyzer_args[1]
+        
+        # Non-test directory should not be included
+        assert "/src" not in analyzer_args[1]
 
 
-def test_stub_wait_for_capacity_fallback():
-    """Tests the wait_for_capacity fallback with invalid reset time."""
-    # STUB: This tests line 185
-    assert True
+def test_calculate_totals_with_missing_data():
+    """Tests the _calculate_totals method with missing or incomplete data."""
+    # This tests lines 560-582 in _calculate_totals method
+    
+    analyzer = projected_coverage.CoverageAnalyzer("test.package", ["test_dir"])
+    
+    # Test with empty coverage data
+    empty_data = {}
+    total_stmts, total_missing, total_percentage = analyzer._calculate_totals(empty_data)
+    assert total_stmts == 0
+    assert total_missing == 0
+    assert total_percentage == 100.0  # Default for empty data should be 100%
+    
+    # Test with complete coverage data
+    complete_data = {
+        "file1.py": {"statements": 100, "missing": 20, "missing_lines": set(range(1, 21))},
+        "file2.py": {"statements": 50, "missing": 10, "missing_lines": set(range(1, 11))}
+    }
+    total_stmts, total_missing, total_percentage = analyzer._calculate_totals(complete_data)
+    assert total_stmts == 150
+    assert total_missing == 30
+    assert total_percentage == 80.0  # (150-30)/150 = 0.8 = 80%
+    
+    # Test with missing 'statements' field
+    incomplete_data = {
+        "file1.py": {"missing": 20, "missing_lines": set(range(1, 21))},  # Missing 'statements'
+        "file2.py": {"statements": 50, "missing": 10, "missing_lines": set(range(1, 11))}
+    }
+    total_stmts, total_missing, total_percentage = analyzer._calculate_totals(incomplete_data)
+    assert total_stmts == 50  # Only counts the file with statements field
+    assert total_missing == 30  # Still counts missing from both files
+    assert total_percentage == 40.0  # (50-30)/50 = 0.4 = 40%
+    
+    # Test with missing 'missing' field
+    incomplete_data = {
+        "file1.py": {"statements": 100, "missing_lines": set(range(1, 21))},  # Missing 'missing' field
+        "file2.py": {"statements": 50, "missing": 10, "missing_lines": set(range(1, 11))}
+    }
+    total_stmts, total_missing, total_percentage = analyzer._calculate_totals(incomplete_data)
+    assert total_stmts == 150  # Counts all statements
+    assert total_missing == 10  # Only counts missing from file2.py
+    assert total_percentage == round(100 * (150 - 10) / 150, 1)  # 93.3%
+    
+    # Test with negative coverage (more missing than statements)
+    negative_data = {
+        "file1.py": {"statements": 10, "missing": 20, "missing_lines": set(range(1, 21))},  # More missing than statements
+        "file2.py": {"statements": 50, "missing": 10, "missing_lines": set(range(1, 11))}
+    }
+    total_stmts, total_missing, total_percentage = analyzer._calculate_totals(negative_data)
+    assert total_stmts == 60
+    assert total_missing == 20  # Should be capped: 10 from file1.py (capped to statements) + 10 from file2.py
+    assert total_percentage == round(100 * (60 - 20) / 60, 1)  # 66.7%
 
 
-def test_stub_missing_timestamp_handling():
+def test_missing_timestamp_handling():
     """Tests handling of missing timestamps in coverage data."""
-    # STUB: This tests line 208
-    assert True
+    # This tests line 208 in the display_coverage_history method
+    
+    # Create a coverage history with missing timestamps
+    history = {
+        "history": [
+            # Entry with timestamp
+            {"timestamp": "2023-01-01T12:00:00", "overall_percentage": 75, "modules": []},
+            # Entry missing timestamp field
+            {"overall_percentage": 80, "modules": []},
+            # Entry with null timestamp
+            {"timestamp": None, "overall_percentage": 85, "modules": []}
+        ],
+        "latest": None
+    }
+    
+    # Mock the get_coverage_history to return our test data
+    with patch.object(projected_coverage, 'get_coverage_history', return_value=history), \
+         patch('sys.stdout', new_callable=MagicMock) as mock_stdout:
+        
+        # Call the display_coverage_history method
+        projected_coverage.display_coverage_history()
+        
+        # Check output to make sure all entries were included
+        calls = [call[0][0] for call in mock_stdout.write.call_args_list]
+        report_text = ''.join(calls)
+        
+        # Verify timestamps are handled correctly
+        assert "2023-01-01" in report_text  # Normal timestamp should appear
+        assert "75%" in report_text  # First entry percentage should appear
+        assert "80%" in report_text  # Entry with missing timestamp percentage should appear
+        assert "85%" in report_text  # Entry with null timestamp percentage should appear
+        
+        # Verify missing entries are displayed with some indication
+        assert "Unknown" in report_text or "N/A" in report_text or "--" in report_text
 
 
-def test_stub_report_output_format():
+def test_report_output_format():
     """Tests detailed formatting in display_results."""
-    # STUB: This tests line 540
-    assert True
+    # This tests lines 630-650 of the display_results method
+    
+    analyzer = projected_coverage.CoverageAnalyzer("test.package", ["test_dir"])
+    
+    # Set up current coverage with detailed missing lines
+    analyzer.current_coverage = {
+        "package/file1.py": {
+            "statements": 200,
+            "missing": 50,
+            "missing_lines": set(range(10, 60))
+        },
+        "package/file2.py": {
+            "statements": 100,
+            "missing": 10,
+            "missing_lines": {5, 10, 15, 20, 25, 30, 35, 40, 45, 50}
+        }
+    }
+    
+    # Set up stub coverage to cover some of the missing lines
+    analyzer.missing_lines = {
+        "package/file1.py": set(range(10, 60)),
+        "package/file2.py": {5, 10, 15, 20, 25, 30, 35, 40, 45, 50}
+    }
+    
+    analyzer.stub_coverage = {
+        "package/file1.py": set(range(10, 30)),  # Cover 20 of 50 missing lines
+        "package/file2.py": {5, 10, 15, 20, 25}  # Cover 5 of 10 missing lines
+    }
+    
+    # Create a projected coverage report
+    projected = {
+        "package/file1.py": {
+            "statements": 200,
+            "missing": 30,
+            "covered": 170,
+            "percentage": 85.0,
+            "current_percentage": 75.0,
+            "improvement": 10.0
+        },
+        "package/file2.py": {
+            "statements": 100,
+            "missing": 5,
+            "covered": 95,
+            "percentage": 95.0,
+            "current_percentage": 90.0,
+            "improvement": 5.0
+        }
+    }
+    
+    # Mock stdout to capture the output
+    with patch('sys.stdout', new_callable=MagicMock) as mock_stdout, \
+         patch.object(projected_coverage, 'save_coverage_results'):
+        
+        # Call the display_results method
+        analyzer.display_results(projected)
+        
+        # Get the output text
+        calls = [call[0][0] for call in mock_stdout.write.call_args_list]
+        report_text = ''.join(calls)
+        
+        # Verify the report header is formatted correctly
+        assert "PROJECTED COVERAGE REPORT" in report_text
+        assert "Current overall coverage:" in report_text
+        assert "Projected overall coverage:" in report_text
+        assert "Overall improvement:" in report_text
+        
+        # Verify the module table has the right format
+        assert "Module" in report_text
+        assert "Stmts" in report_text
+        assert "Miss" in report_text
+        assert "Cover" in report_text
+        assert "Current" in report_text
+        assert "Gain" in report_text
+        
+        # Verify the detailed report section
+        assert "Detailed coverage information:" in report_text
+        assert "package/file1.py:" in report_text
+        assert "Total statements: 200" in report_text
+        assert "Currently missing: 50" in report_text
+        assert "Lines that would be covered by stubs: 20" in report_text
+        assert "Remaining uncovered: 30" in report_text
+        
+        # Verify the uncovered lines section
+        assert "Lines that would still be uncovered after implementing stubs:" in report_text
 
 
-def test_stub_parse_cli_args():
+def test_parse_cli_args():
     """Tests CLI argument parsing in the main function."""
-    # STUB: This tests line 643
-    assert True
+    # This tests lines 715-733
+    
+    # Test each command-line option with different values
+    test_cases = [
+        # Basic required arguments
+        ["--package", "pygovpub.auth", "--stub-dir", "tests/unit/auth"],
+        # Report flag
+        ["--package", "pygovpub.auth", "--report"],
+        # History flag
+        ["--package", "pygovpub.auth", "--history"],
+        # Scan all flag
+        ["--package", "pygovpub.auth", "--scan-all"],
+        # Verbose flag
+        ["--package", "pygovpub.auth", "--verbose"],
+        # All packages flag
+        ["--package", "pygovpub.auth", "--all-packages"],
+        # Multiple stub directories
+        ["--package", "pygovpub.auth", "--stub-dir", "tests/unit/auth", "--stub-dir", "tests/integration/auth"]
+    ]
+    
+    # Create a custom parser for testing
+    def create_test_parser():
+        parser = argparse.ArgumentParser(description="Project code coverage based on test stubs")
+        parser.add_argument("--stub-dir", dest="stub_dirs", action="append", default=[],
+                            help="Directory containing test stubs (can specify multiple)")
+        parser.add_argument("--package", default="pygovpub.auth",
+                            help="Package to analyze (default: pygovpub.auth)")
+        parser.add_argument("--all-packages", action="store_true",
+                            help="Analyze all packages (pygovpub and utilities) and combine reports")
+        parser.add_argument("--scan-all", action="store_true", 
+                            help="Scan all test directories for stubs")
+        parser.add_argument("--verbose", "-v", action="store_true", 
+                            help="Show detailed debug output")
+        parser.add_argument("--report", action="store_true",
+                            help="Display the latest coverage report")
+        parser.add_argument("--history", action="store_true",
+                            help="Display coverage history")
+        return parser
+    
+    # Test parsing with each combination of arguments
+    for args in test_cases:
+        with patch('sys.argv', ['projected_coverage.py'] + args):
+            # Create a parser instance for each test case
+            parser = create_test_parser()
+            
+            # Parse the arguments
+            parsed_args = parser.parse_args()
+            
+            # Verify the parsed arguments match what we expect
+            if "--package" in args:
+                assert parsed_args.package == args[args.index("--package") + 1]
+            
+            if "--report" in args:
+                assert parsed_args.report is True
+            else:
+                assert not hasattr(parsed_args, 'report') or parsed_args.report is False
+            
+            if "--history" in args:
+                assert parsed_args.history is True
+            else:
+                assert not hasattr(parsed_args, 'history') or parsed_args.history is False
+            
+            if "--scan-all" in args:
+                assert parsed_args.scan_all is True
+            else:
+                assert not hasattr(parsed_args, 'scan_all') or parsed_args.scan_all is False
+            
+            if "--verbose" in args:
+                assert parsed_args.verbose is True
+            else:
+                assert not hasattr(parsed_args, 'verbose') or parsed_args.verbose is False
+            
+            if "--all-packages" in args:
+                assert parsed_args.all_packages is True
+            else:
+                assert not hasattr(parsed_args, 'all_packages') or parsed_args.all_packages is False
+            
+            # Verify stub_dirs is a list
+            assert isinstance(parsed_args.stub_dirs, list)
+            
+            # Check number of stub directories
+            if "--stub-dir" in args:
+                expected_count = args.count("--stub-dir")
+                assert len(parsed_args.stub_dirs) == expected_count
+                
+                # Check that each stub dir is correctly included
+                for i in range(expected_count):
+                    stub_dir_index = args.index("--stub-dir", i*2 if i > 0 else 0)
+                    expected_dir = args[stub_dir_index + 1]
+                    assert expected_dir in parsed_args.stub_dirs
 
 
-def test_stub_analyze_test_stubs_file_matching():
+def test_file_match_in_analyze_test_stubs():
     """Tests how analyze_test_stubs matches source files to tests."""
-    # STUB: This tests lines 350-385
+    
+    analyzer = projected_coverage.CoverageAnalyzer("test.package", ["test_dir"])
+    
+    # Set up test data
+    analyzer.current_coverage = {
+        "src/test/package/module.py": {"statements": 100, "missing": 20, "missing_lines": set(range(10, 30))},
+        "package/other_module.py": {"statements": 50, "missing": 10, "missing_lines": set(range(5, 15))}
+    }
+    
+    # Set up missing lines to match current coverage
+    analyzer.missing_lines = {
+        "src/test/package/module.py": set(range(10, 30)),
+        "package/other_module.py": set(range(5, 15))
+    }
+    
+    # Mock the file system operations
+    mock_test_files = {
+        "test_module.py": """
+import test.package.module
+from test.package import module as mod
+
+def test_function():
+    # This tests lines 10-20
     assert True
+"""
+    }
+    
+    # Mock Path.glob to return our test files
+    with patch('pathlib.Path.glob', return_value=[Path("test_module.py")]), \
+         patch('builtins.open', side_effect=lambda f, mode='r': mock_open(read_data=mock_test_files.get(str(f), "")).return_value), \
+         patch('ast.parse'), \
+         patch('ast.walk'), \
+         patch('builtins.print'):
+        
+        # Mock imports analysis to simulate finding imports in the test file
+        imports = ["test.package.module"]
+        with patch.object(analyzer, '_find_imports_in_file', return_value=imports):
+            
+            # Run analyze_test_stubs
+            analyzer.analyze_test_stubs()
+            
+            # Verify that the module was matched correctly
+            assert "src/test/package/module.py" in analyzer.stub_coverage
+            assert analyzer.stub_coverage["src/test/package/module.py"] == set(range(10, 21))  # Should match 10-20
+            
+            # Verify that there's no match for the other module
+            assert "package/other_module.py" not in analyzer.stub_coverage or not analyzer.stub_coverage["package/other_module.py"]
+    
+    # Now test filename-based matching when imports don't help
+    mock_test_files["test_other_module.py"] = """
+# No relevant imports here
+
+def test_function():
+    # This tests lines 5-10
+    assert True
+"""
+    
+    # Reset stub coverage
+    analyzer.stub_coverage = defaultdict(set)
+    
+    # Mock Path.glob to return our test files
+    with patch('pathlib.Path.glob', return_value=[Path("test_other_module.py")]), \
+         patch('builtins.open', side_effect=lambda f, mode='r': mock_open(read_data=mock_test_files.get(str(f), "")).return_value), \
+         patch('ast.parse'), \
+         patch('ast.walk'), \
+         patch('builtins.print'):
+        
+        # Mock imports analysis to simulate finding no relevant imports
+        with patch.object(analyzer, '_find_imports_in_file', return_value=[]):
+            
+            # Create a mapping for filename-based matching
+            module_to_file = {
+                "other_module": "package/other_module.py"
+            }
+            
+            # Mock _build_module_to_file_mapping to return our mapping
+            with patch.object(analyzer, '_build_module_to_file_mapping', return_value=module_to_file):
+                
+                # Run analyze_test_stubs
+                analyzer.analyze_test_stubs()
+                
+                # Verify that the module was matched by filename
+                assert "package/other_module.py" in analyzer.stub_coverage
+                assert analyzer.stub_coverage["package/other_module.py"] == set(range(5, 11))  # Should match 5-10
 
 
 def test_get_coverage_from_report_parsing():
@@ -1057,10 +1524,60 @@ TOTAL                                  270     77    72%
         assert all("pygovpub/auth" in file_path for file_path in coverage_data)
 
 
-def test_stub_stderr_redirection():
+def test_stderr_redirection():
     """Tests stderr redirection in the main function."""
-    # STUB: This tests lines 618-643
-    assert True
+    # This tests lines 618-643
+    
+    # Create a mock stderr and stdout
+    mock_stderr = MagicMock()
+    mock_stdout = MagicMock()
+    
+    # Create a mock arguments object with verbose=False to trigger redirection
+    class MockArgs:
+        report = False
+        history = False
+        package = "pygovpub.auth"
+        stub_dirs = ["tests/unit/auth"]
+        scan_all = False
+        verbose = False
+        all_packages = False
+    
+    # Create a mock analyzer that just returns empty results
+    mock_analyzer = MagicMock()
+    mock_analyzer.get_current_coverage.return_value = {}
+    mock_analyzer.analyze_test_stubs.return_value = {}
+    mock_analyzer.calculate_projected_coverage.return_value = {}
+    
+    # Need to patch multiple things:
+    # 1. sys.stderr to verify it's redirected
+    # 2. ArgumentParser.parse_args to return our mock args
+    # 3. CoverageAnalyzer to return our mock analyzer
+    # 4. os.devnull to mock the redirect target
+    # 5. The original sys.stderr restoration at the end
+    with patch('sys.stderr', mock_stderr), \
+         patch('os.devnull', 'mock_devnull'), \
+         patch('builtins.open', mock_open()) as mock_file, \
+         patch.object(projected_coverage.argparse.ArgumentParser, 'parse_args', return_value=MockArgs()), \
+         patch.object(projected_coverage, 'CoverageAnalyzer', return_value=mock_analyzer):
+        
+        # Call the main function
+        projected_coverage.main()
+        
+        # Verify that open was called with os.devnull and 'w'
+        mock_file.assert_any_call('mock_devnull', 'w')
+        
+        # Now let's test with verbose=True which should not redirect stderr
+        MockArgs.verbose = True
+        
+        # Reset mocks
+        mock_file.reset_mock()
+        
+        # Run again with verbose=True
+        projected_coverage.main()
+        
+        # Verify that open was NOT called with os.devnull (no redirection with verbose)
+        for call_args in mock_file.call_args_list:
+            assert ('mock_devnull', 'w') != call_args[0]
 
 
 def test_coverage_xml_parsing_comprehensive():
@@ -1305,66 +1822,156 @@ pygovpub/auth/auth_manager.py             100     25    75%   10-15, invalid, 25
         assert coverage_data["pygovpub/auth/auth_manager.py"]["missing_lines"] == set(list(range(10, 16)) + list(range(25, 31)))
 
 
-def test_stub_file_check_logic():
+def test_file_check_logic():
     """Tests the file existence check logic when looking for coverage XML."""
-    # STUB: This tests line 200
-    assert True
+    # This tests line 200 - the file existence check in get_current_coverage
+    
+    analyzer = projected_coverage.CoverageAnalyzer("test.package", ["test_dir"])
+    
+    # Test when file doesn't exist
+    with patch('os.path.exists', return_value=False), \
+         patch.object(analyzer, '_get_coverage_from_report') as mock_report, \
+         patch('builtins.print'):
+        
+        # Setup mock report to return test data
+        mock_report.return_value = {"test_file.py": {"statements": 100, "missing": 20, "missing_lines": set(range(1, 21))}}
+        
+        # Call method that should check for file existence
+        coverage = analyzer.get_current_coverage()
+        
+        # Verify fallback method was called because file doesn't exist
+        mock_report.assert_called_once()
+        assert coverage == mock_report.return_value
+    
+    # Test when file exists but XML parsing fails
+    with patch('os.path.exists', return_value=True), \
+         patch('xml.etree.ElementTree.parse', side_effect=Exception("XML error")), \
+         patch.object(analyzer, '_get_coverage_from_report') as mock_report, \
+         patch('builtins.print'):
+        
+        # Reset mock and configure with different data
+        mock_report.reset_mock()
+        mock_report.return_value = {"another_file.py": {"statements": 50, "missing": 10, "missing_lines": set(range(1, 11))}}
+        
+        # Call method
+        coverage = analyzer.get_current_coverage()
+        
+        # Verify it attempted XML parsing then fell back
+        mock_report.assert_called_once()
+        assert coverage == mock_report.return_value
 
 
-def test_stub_uncovered_lines_edge_cases():
+def test_uncovered_lines_edge_cases():
     """Tests handling of edge cases in the uncovered lines output."""
-    # STUB: This tests line 547
-    assert True
+    # This tests lines 665-674 - display of uncovered lines
+    
+    analyzer = projected_coverage.CoverageAnalyzer("test.package", ["test_dir"])
+    
+    # Set up current coverage
+    analyzer.current_coverage = {
+        "file1.py": {"statements": 100, "missing": 10, "missing_lines": {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}},
+        "file2.py": {"statements": 50, "missing": 5, "missing_lines": {1, 2, 3, 4, 5}}
+    }
+    
+    # Set up missing lines to match current coverage
+    analyzer.missing_lines = {
+        "file1.py": {1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+        "file2.py": {1, 2, 3, 4, 5}
+    }
+    
+    # Set up stub coverage to cover some lines
+    analyzer.stub_coverage = {
+        "file1.py": {1, 2, 3, 4, 5},  # Half covered
+        "file2.py": {1, 2, 3, 4, 5}   # Fully covered
+    }
+    
+    # Create projected coverage result
+    projected = {
+        "file1.py": {
+            "statements": 100,
+            "missing": 5,
+            "covered": 95,
+            "percentage": 95.0,
+            "current_percentage": 90.0,
+            "improvement": 5.0
+        },
+        "file2.py": {
+            "statements": 50,
+            "missing": 0,
+            "covered": 50,
+            "percentage": 100.0,
+            "current_percentage": 90.0,
+            "improvement": 10.0
+        }
+    }
+    
+    # Mock stdout to capture output
+    with patch('sys.stdout', new_callable=MagicMock) as mock_stdout, \
+         patch.object(projected_coverage, 'save_coverage_results'):
+        
+        # Call the display_results method
+        analyzer.display_results(projected)
+        
+        # Get the output
+        calls = [call[0][0] for call in mock_stdout.write.call_args_list]
+        output = ''.join(calls)
+        
+        # Check that uncovered lines section is present
+        assert "Lines that would still be uncovered after implementing stubs:" in output
+        
+        # Make sure file1.py is listed as having uncovered lines
+        assert "file1.py:" in output.split("Lines that would still be uncovered")[1]
+        
+        # Make sure file2.py is NOT listed in the uncovered lines section since it's fully covered
+        file2_in_uncovered = "file2.py:" in output.split("Lines that would still be uncovered")[1]
+        assert not file2_in_uncovered, "file2.py should not appear in uncovered lines section"
+        
+        # Test with all lines covered
+        analyzer.stub_coverage["file1.py"] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+        projected["file1.py"]["missing"] = 0
+        
+        # Reset mock
+        mock_stdout.reset_mock()
+        
+        # Call display_results again with all lines covered
+        analyzer.display_results(projected)
+        
+        # Get the new output
+        calls = [call[0][0] for call in mock_stdout.write.call_args_list]
+        output = ''.join(calls)
+        
+        # Check for "all covered" message
+        assert "All lines would be covered after implementing stubs!" in output
+        
+        # Make sure uncovered lines section is NOT present
+        assert "Lines that would still be uncovered after implementing stubs:" not in output
 
 
-def test_stub_main_function_completion():
+def test_main_function_completion():
     """Tests completion behavior of the main function."""
-    # STUB: This tests line 650
-    assert True
-
-
-def test_stub_xml_parsing_error_handling():
-    """Tests handling of generic exceptions during XML parsing."""
-    # STUB: This tests lines 210, 243-247
-    assert True
+    # This tests lines 823-838 - regular single package analysis
     
-def test_stub_handle_missing_package_data():
-    """Tests handling of missing package data in coverage results."""
-    # STUB: This tests lines 501-526
-    assert True
-    
-def test_stub_negative_coverage_calculation_fix():
-    """Tests the fix for negative coverage calculation."""
-    # STUB: This tests lines 530-550
-    assert True
-    
-def test_main_all_packages_comprehensive():
-    """Tests the all-packages analysis in the main function."""
-    # Tests a large section covering lines 666-768 - the all-packages analysis
-    
-    # Create mock command line arguments with --all-packages flag
+    # Create mock command line arguments
     class MockArgs:
         report = False
         history = False
-        package = "pygovpub.auth" 
-        stub_dirs = ["tests/unit"]
+        package = "pygovpub.auth"
+        stub_dirs = ["tests/unit/auth"]
         scan_all = False
-        verbose = True
-        all_packages = True
+        verbose = False 
+        all_packages = False
     
-    # Mock the CoverageAnalyzer classes for each package
-    mock_pygovpub_analyzer = MagicMock()
-    mock_utilities_analyzer = MagicMock()
-    
-    # Configure pygovpub analyzer
-    pygovpub_coverage = {
-        "pygovpub/auth/auth_manager.py": {"statements": 100, "missing": 20, "missing_lines": set(range(1, 21))}
+    # Create a mock analyzer
+    mock_analyzer = MagicMock()
+    mock_analyzer.get_current_coverage.return_value = {
+        "file1.py": {"statements": 100, "missing": 20, "missing_lines": set(range(1, 21))}
     }
-    mock_pygovpub_analyzer.current_coverage = pygovpub_coverage
-    mock_pygovpub_analyzer.missing_lines = {"pygovpub/auth/auth_manager.py": set(range(1, 21))}
-    mock_pygovpub_analyzer.calculate_projected_coverage.return_value = {
-        "pygovpub/auth/auth_manager.py": {
-            "statements": 100,
+    mock_analyzer.analyze_test_stubs.return_value = {}
+    
+    # Mock the projected coverage result
+    projected_result = {
+        "file1.py": {
+            "statements": 100, 
             "missing": 10,
             "covered": 90,
             "percentage": 90.0,
@@ -1372,23 +1979,299 @@ def test_main_all_packages_comprehensive():
             "improvement": 10.0
         }
     }
+    mock_analyzer.calculate_projected_coverage.return_value = projected_result
     
-    # Configure utilities analyzer
+    # Patch the necessary components
+    with patch.object(projected_coverage.argparse.ArgumentParser, 'parse_args', return_value=MockArgs()), \
+         patch.object(projected_coverage, 'CoverageAnalyzer', return_value=mock_analyzer), \
+         patch('sys.stderr'), \
+         patch('builtins.print'):
+        
+        # Call the main function
+        projected_coverage.main()
+        
+        # Verify that analyzer methods were called in the correct order
+        mock_analyzer.get_current_coverage.assert_called_once()
+        mock_analyzer.analyze_test_stubs.assert_called_once()
+        mock_analyzer.calculate_projected_coverage.assert_called_once()
+        mock_analyzer.display_results.assert_called_once_with(projected_result)
+        
+    # Test with verbose=True to verify stderr redirection doesn't happen
+    MockArgs.verbose = True
+    
+    with patch.object(projected_coverage.argparse.ArgumentParser, 'parse_args', return_value=MockArgs()), \
+         patch.object(projected_coverage, 'CoverageAnalyzer', return_value=mock_analyzer), \
+         patch('builtins.open') as mock_open, \
+         patch('sys.stderr'), \
+         patch('builtins.print'):
+        
+        # Reset the mock analyzer call counts
+        mock_analyzer.reset_mock()
+        
+        # Call the main function
+        projected_coverage.main()
+        
+        # Verify that open was not called for stderr redirection
+        mock_open.assert_not_called(), "sys.stderr should not be redirected when verbose=True"
+        
+        # Verify analyzer methods were still called
+        mock_analyzer.get_current_coverage.assert_called_once()
+        mock_analyzer.analyze_test_stubs.assert_called_once()
+        mock_analyzer.calculate_projected_coverage.assert_called_once()
+        mock_analyzer.display_results.assert_called_once_with(projected_result)
+
+
+def test_xml_parsing_error_handling():
+    """Tests handling of generic exceptions during XML parsing."""
+    # This tests lines 210, 243-247
+    
+    analyzer = projected_coverage.CoverageAnalyzer("test.package", ["test_dir"])
+    
+    # Set up mock XML parsing that simulates corrupted XML data
+    with patch('xml.etree.ElementTree.parse') as mock_parse, \
+         patch('os.path.exists', return_value=True), \
+         patch.object(analyzer, '_get_coverage_from_report') as mock_report, \
+         patch('builtins.print'):
+        
+        # Configure XML parsing to raise a generic XML error
+        mock_parse.side_effect = Exception("Corrupted XML data")
+        
+        # Configure fallback method to return test data
+        fallback_data = {
+            "file1.py": {"statements": 100, "missing": 10, "missing_lines": set(range(1, 11))},
+            "file2.py": {"statements": 50, "missing": 5, "missing_lines": set(range(1, 6))}
+        }
+        mock_report.return_value = fallback_data
+        
+        # Call get_current_coverage which should handle the exception
+        result = analyzer.get_current_coverage()
+        
+        # Verify it called the parse method
+        mock_parse.assert_called_once()
+        
+        # Verify it fell back to the report method
+        mock_report.assert_called_once()
+        
+        # Verify we got the fallback data
+        assert result == fallback_data
+        
+    # Test behavior with a complex XML parse error
+    with patch('xml.etree.ElementTree.parse') as mock_parse, \
+         patch('os.path.exists', return_value=True), \
+         patch.object(analyzer, '_get_coverage_from_report') as mock_report, \
+         patch('builtins.print'):
+        
+        # Configure a more complex XML error with nested structure
+        class XMLError(Exception):
+            def __init__(self):
+                self.position = (10, 20)
+                self.message = "Invalid token at position 10:20"
+            
+            def __str__(self):
+                return f"XML parsing error: {self.message}"
+        
+        mock_parse.side_effect = XMLError()
+        
+        # Configure fallback method to return different test data
+        fallback_data = {
+            "other_file.py": {"statements": 75, "missing": 15, "missing_lines": set(range(10, 25))}
+        }
+        mock_report.return_value = fallback_data
+        
+        # Call get_current_coverage which should handle the structured exception
+        result = analyzer.get_current_coverage()
+        
+        # Verify the XML parse was attempted
+        mock_parse.assert_called_once()
+        
+        # Verify it properly handled the complex exception and fell back
+        mock_report.assert_called_once()
+        
+        # Verify we got the fallback data
+        assert result == fallback_data
+    
+def test_handle_missing_package_data():
+    """Tests handling of missing package data in coverage results."""
+    # This tests lines 501-526
+    
+    # Create an analyzer instance
+    analyzer = projected_coverage.CoverageAnalyzer("test.package", ["test_dir"])
+    
+    # Setup current coverage with some missing data
+    analyzer.current_coverage = {
+        "file1.py": {"statements": 100, "missing": 20, "missing_lines": set(range(1, 21))},
+        "file2.py": {"statements": 50, "missing_lines": set(range(1, 16))}  # Missing the 'missing' field
+    }
+    
+    # Verify missing field doesn't cause failure
+    assert "file2.py" in analyzer.current_coverage
+    assert "missing_lines" in analyzer.current_coverage["file2.py"]
+    assert "missing" not in analyzer.current_coverage["file2.py"]
+    
+    # Setup stub coverage
+    analyzer.missing_lines = {
+        "file1.py": set(range(1, 21)),
+        "file2.py": set(range(1, 16))
+    }
+    
+    analyzer.stub_coverage = {
+        "file1.py": set(range(1, 11)),  # 10 lines covered by stubs
+        "file2.py": set(range(1, 6))    # 5 lines covered by stubs
+    }
+    
+    # Calculate projected coverage
+    projected = analyzer.calculate_projected_coverage()
+    
+    # Verify that file1.py is handled correctly
+    assert projected["file1.py"]["statements"] == 100
+    assert projected["file1.py"]["missing"] == 10  # 20 original - 10 covered by stubs
+    assert projected["file1.py"]["covered"] == 90
+    assert projected["file1.py"]["percentage"] == 90.0
+    
+    # Verify that file2.py missing field is calculated based on missing_lines
+    assert projected["file2.py"]["statements"] == 50
+    assert projected["file2.py"]["missing"] == 10  # 15 original - 5 covered by stubs
+    assert projected["file2.py"]["covered"] == 40
+    assert projected["file2.py"]["percentage"] == 80.0
+    
+    # Now test with missing statement count (extreme case)
+    analyzer.current_coverage["file3.py"] = {"missing_lines": set(range(1, 11))}  # No statements field
+    analyzer.missing_lines["file3.py"] = set(range(1, 11))
+    analyzer.stub_coverage["file3.py"] = set(range(1, 6))  # 5 lines covered by stubs
+    
+    # Should handle this gracefully by skipping or using defaults
+    projected = analyzer.calculate_projected_coverage()
+    
+    # file3.py should either be skipped or have reasonable defaults
+    if "file3.py" in projected:
+        assert projected["file3.py"]["missing"] <= projected["file3.py"]["statements"]
+        assert 0 <= projected["file3.py"]["percentage"] <= 100
+    
+def test_negative_coverage_calculation_fix():
+    """Tests the fix for negative coverage calculation."""
+    # This tests lines 530-550
+    
+    # Create an analyzer instance
+    analyzer = projected_coverage.CoverageAnalyzer("test.package", ["test_dir"])
+    
+    # Set up a scenario where missing_lines could exceed statements
+    # This can happen if there are parsing errors
+    analyzer.current_coverage = {
+        "file1.py": {"statements": 50, "missing": 60, "missing_lines": set(range(1, 61))},
+        "file2.py": {"statements": 100, "missing": 20, "missing_lines": set(range(1, 21))}
+    }
+    
+    # Set up minimal stub coverage
+    analyzer.stub_coverage = {
+        "file1.py": set(),  # No stubs for file1
+        "file2.py": set(range(1, 11))  # Stubs for half of file2's missing lines
+    }
+    
+    # Calculate projected coverage
+    with patch('builtins.print'):  # Suppress output
+        total_stmts, total_missing, total_percentage = analyzer._calculate_totals(analyzer.current_coverage)
+    
+    # Verify that total_missing doesn't exceed total_stmts
+    assert total_stmts == 150
+    assert total_missing == 70  # Should be 50+20=70 (50 capped from 60, plus 20)
+    assert total_percentage == round(100 * (150 - 70) / 150, 1) == 53.3
+    
+    # Test the display_results method which uses this calculation
+    with patch('builtins.print'), \
+         patch.object(projected_coverage, 'save_coverage_results') as mock_save:
+        
+        # Create a projected dictionary similar to what calculate_projected_coverage returns
+        projected = {
+            "file1.py": {
+                "statements": 50,
+                "missing": 50,  # Capped at statements
+                "covered": 0,
+                "percentage": 0.0,
+                "current_percentage": 0.0,
+                "improvement": 0.0
+            },
+            "file2.py": {
+                "statements": 100,
+                "missing": 10,  # 20 - 10 from stubs
+                "covered": 90,
+                "percentage": 90.0,
+                "current_percentage": 80.0,
+                "improvement": 10.0
+            }
+        }
+        
+        # Call display_results
+        analyzer.display_results(projected)
+        
+        # Verify data saved has correct percentage calculation
+        saved_data = mock_save.call_args[0][0]
+        assert saved_data["total_statements"] == 150
+        assert saved_data["total_missing"] <= saved_data["total_statements"]
+        assert saved_data["overall_percentage"] >= 0
+    
+def test_main_all_packages_combined_metrics():
+    """Tests the all-packages analysis with combined metrics calculation."""
+    # Tests lines 782-822 for the all-packages combined metrics
+    
+    # Create mock command line arguments for all-packages mode
+    class MockArgs:
+        report = False
+        history = False
+        package = "pygovpub"
+        stub_dirs = ["tests/unit"]
+        scan_all = False
+        verbose = True
+        all_packages = True
+    
+    # Create mock analyzers for each package
+    mock_pygovpub_analyzer = MagicMock()
+    mock_utilities_analyzer = MagicMock()
+    
+    # Configure current coverage data for pygovpub
+    pygovpub_coverage = {
+        "pygovpub/auth/models.py": {"statements": 100, "missing": 20, "missing_lines": set(range(1, 21))},
+        "pygovpub/auth/auth_manager.py": {"statements": 200, "missing": 40, "missing_lines": set(range(1, 41))}
+    }
+    mock_pygovpub_analyzer.current_coverage = pygovpub_coverage
+    
+    # Configure current coverage data for utilities
     utilities_coverage = {
-        "utilities/projected_coverage.py": {"statements": 468, "missing": 400, "missing_lines": set(range(1, 401))}
+        "utilities/projected_coverage.py": {"statements": 500, "missing": 300, "missing_lines": set(range(1, 301))}
     }
     mock_utilities_analyzer.current_coverage = utilities_coverage
-    mock_utilities_analyzer.missing_lines = {"utilities/projected_coverage.py": set(range(1, 401))}
-    mock_utilities_analyzer.calculate_projected_coverage.return_value = {
-        "utilities/projected_coverage.py": {
-            "statements": 468,
-            "missing": 300,
-            "covered": 168,
-            "percentage": 35.9,
-            "current_percentage": 14.5,
-            "improvement": 21.4
+    
+    # Configure projected coverage results
+    pygovpub_projected = {
+        "pygovpub/auth/models.py": {
+            "statements": 100,
+            "missing": 10,
+            "covered": 90,
+            "percentage": 90.0,
+            "current_percentage": 80.0,
+            "improvement": 10.0
+        },
+        "pygovpub/auth/auth_manager.py": {
+            "statements": 200,
+            "missing": 20,
+            "covered": 180,
+            "percentage": 90.0,
+            "current_percentage": 80.0,
+            "improvement": 10.0
         }
     }
+    mock_pygovpub_analyzer.calculate_projected_coverage.return_value = pygovpub_projected
+    
+    utilities_projected = {
+        "utilities/projected_coverage.py": {
+            "statements": 500,
+            "missing": 200,
+            "covered": 300,
+            "percentage": 60.0,
+            "current_percentage": 40.0,
+            "improvement": 20.0
+        }
+    }
+    mock_utilities_analyzer.calculate_projected_coverage.return_value = utilities_projected
     
     # Create a factory function to return the appropriate mock analyzer
     def analyzer_factory(package, stub_dirs):
@@ -1400,35 +2283,53 @@ def test_main_all_packages_comprehensive():
     # Patch necessary functions
     with patch.object(projected_coverage.argparse.ArgumentParser, 'parse_args', return_value=MockArgs()), \
          patch.object(projected_coverage, 'CoverageAnalyzer', side_effect=analyzer_factory), \
-         patch('builtins.print'):
+         patch('builtins.print') as mock_print:
         
-        # Run the main function
+        # Call the main function
         projected_coverage.main()
         
         # Verify both analyzers were created
         assert projected_coverage.CoverageAnalyzer.call_count == 2
         
-        # Get the call arguments to verify correct packages and directories
+        # Verify the calls to CoverageAnalyzer were for the correct packages
         calls = projected_coverage.CoverageAnalyzer.call_args_list
         assert calls[0][0][0] == "pygovpub"
-        assert "tests/unit" in calls[0][0][1]
         assert calls[1][0][0] == "utilities"
-        assert any("unit" in d for d in calls[1][0][1])
         
-        # Verify methods were called on both analyzers
-        assert mock_pygovpub_analyzer.get_current_coverage.call_count == 1
-        assert mock_pygovpub_analyzer.analyze_test_stubs.call_count == 1
-        assert mock_pygovpub_analyzer.calculate_projected_coverage.call_count == 1
-        assert mock_pygovpub_analyzer.display_results.call_count == 1
+        # Check both analyzers had their methods called
+        mock_pygovpub_analyzer.get_current_coverage.assert_called_once()
+        mock_pygovpub_analyzer.analyze_test_stubs.assert_called_once()
+        mock_pygovpub_analyzer.calculate_projected_coverage.assert_called_once()
+        mock_pygovpub_analyzer.display_results.assert_called_once_with(pygovpub_projected)
         
-        assert mock_utilities_analyzer.get_current_coverage.call_count == 1
-        assert mock_utilities_analyzer.analyze_test_stubs.call_count == 1
-        assert mock_utilities_analyzer.calculate_projected_coverage.call_count == 1
-        assert mock_utilities_analyzer.display_results.call_count == 1
+        mock_utilities_analyzer.get_current_coverage.assert_called_once()
+        mock_utilities_analyzer.analyze_test_stubs.assert_called_once()
+        mock_utilities_analyzer.calculate_projected_coverage.assert_called_once()
+        mock_utilities_analyzer.display_results.assert_called_once_with(utilities_projected)
+        
+        # Check for combined metrics calculation in the output
+        output_text = ''.join([call[0][0] for call in mock_print.call_args_list if len(call[0]) > 0])
+        
+        # Verify overall summary section is present
+        assert "OVERALL COVERAGE SUMMARY" in output_text
+        
+        # Check that total statements is calculated correctly (100 + 200 + 500 = 800)
+        assert "Total statements: 800" in output_text
+        
+        # Check that current coverage is calculated correctly
+        # Current missing: 20 + 40 + 300 = 360, so coverage is (800-360)/800 = 55%
+        assert "Current coverage: 55.0%" in output_text
+        
+        # Check that projected coverage is calculated correctly
+        # Projected missing: 10 + 20 + 200 = 230, so coverage is (800-230)/800 = 71.25%
+        assert "Projected coverage: 71.2%" in output_text
+        
+        # Check that improvement is calculated correctly (71.25% - 55% = 16.25%)
+        assert "Improvement: 16.2%" in output_text
     
 def test_multi_package_analysis():
     """Tests the multi-package analysis functionality with --all-packages."""
-    # Implements test for lines 666-691
+    # Tests lines 666-691 - initial setup for all-packages analysis
     
     # Mock command line arguments with --all-packages flag
     class MockArgs:
@@ -1490,7 +2391,62 @@ def test_multi_package_analysis():
         # Just verify that print was called a reasonable number of times for multi-package analysis
         assert mock_print.call_count > 5, "Expected multiple print calls for multi-package analysis"
     
-def test_stub_command_line_arg_parsing():
-    """Tests the command line argument parsing and configuration."""
-    # STUB: This tests lines 437-497
-    assert True
+def test_command_line_arg_scan_all():
+    """Tests CLI arguments for scan_all and stub directory handling."""
+    # This tests lines 744-754 - handling of scan_all and stub directories
+    
+    # Create a mock command line arguments with no stub directories
+    class MockArgs:
+        report = False
+        history = False
+        package = "test.package"
+        stub_dirs = []  # No directories specified
+        scan_all = False
+        verbose = True
+        all_packages = False
+    
+    # Create a mock analyzer
+    mock_analyzer = MagicMock()
+    
+    # Patch necessary functions
+    with patch.object(projected_coverage.argparse.ArgumentParser, 'parse_args', return_value=MockArgs()), \
+         patch.object(projected_coverage, 'CoverageAnalyzer', return_value=mock_analyzer), \
+         patch('builtins.print'):
+        
+        # Call the main function
+        projected_coverage.main()
+        
+        # Verify it used the default stub directory "tests/unit/auth"
+        analyzer_call = projected_coverage.CoverageAnalyzer.call_args
+        assert "tests/unit/auth" in analyzer_call[0][1]
+    
+    # Now test with scan_all=True
+    MockArgs.stub_dirs = []  # Reset to empty
+    MockArgs.scan_all = True
+    
+    # Mock the walk results to return test directories
+    mock_walk_data = [
+        ("/tests", ["unit", "integration"], []),
+        ("/tests/unit", ["auth", "utilities"], []),
+        ("/tests/unit/auth", [], ["test_auth_manager.py", "test_models.py"]),
+        ("/tests/unit/utilities", [], ["test_projected_coverage.py"]),
+    ]
+    
+    # Patch os.walk and reset the analyzer mock
+    with patch.object(projected_coverage.argparse.ArgumentParser, 'parse_args', return_value=MockArgs()), \
+         patch.object(projected_coverage, 'CoverageAnalyzer', return_value=mock_analyzer), \
+         patch('os.walk', return_value=mock_walk_data), \
+         patch('builtins.print'):
+        
+        # Reset mocks
+        mock_analyzer.reset_mock()
+        
+        # Call the main function with scan_all=True
+        projected_coverage.main()
+        
+        # Verify it found and used both test directories
+        analyzer_call = projected_coverage.CoverageAnalyzer.call_args
+        test_dirs = analyzer_call[0][1]
+        assert "/tests/unit/auth" in test_dirs
+        assert "/tests/unit/utilities" in test_dirs
+        assert len(test_dirs) == 2  # Should only include directories with test files

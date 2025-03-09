@@ -5,6 +5,7 @@ These tests focus on edge cases and exceptional paths.
 
 import os
 import json
+import asyncio
 import pytest
 from unittest import mock
 from unittest.mock import patch
@@ -349,3 +350,143 @@ def test_db_auth_config():
         assert config["base_url"] == "https://mock-api.congress.gov"
         assert config["auth_type"] == AuthType.HEADER
         assert config["auth_key_name"] == "X-API-Key"
+
+
+def test_execute_request_http_error():
+    """Test execute_request with an HTTP error."""
+    # This tests lines 387-388
+    
+    auth_manager = AuthManager()
+    auth_manager.add_key(ApiSource.CONGRESS, "test_key")
+    
+    # Create a simpler test that verifies error handling in execute_request
+    # instead of trying to make AsyncMock work with the exception path
+    
+    # Create a mock session that raises an exception
+    class MockResponse:
+        def __init__(self):
+            self.status = 422
+            self.headers = {"Content-Type": "application/json"}
+            self.release_called = False
+            
+        async def json(self):
+            return {"error": "Validation error"}
+            
+        async def raise_for_status(self):
+            # Simulate HTTP error
+            raise aiohttp.ClientResponseError(
+                request_info=mock.MagicMock(),
+                history=(),
+                status=422,
+                message="Unprocessable Entity",
+                headers={}
+            )
+            
+        async def release(self):
+            self.release_called = True
+            
+    class MockSession:
+        def __init__(self):
+            self.closed = False
+            self.response = MockResponse()
+            
+        async def __aenter__(self):
+            return self
+            
+        async def __aexit__(self, *args):
+            pass
+            
+        async def request(self, method, url, **kwargs):
+            return self.response
+            
+        async def close(self):
+            self.closed = True
+    
+    # Test the function
+    @pytest.mark.asyncio
+    async def test_async():
+        session = MockSession()
+        # Direct patch of aiohttp.ClientSession instead of auth_manager method
+        with patch('aiohttp.ClientSession', return_value=session):
+            with pytest.raises(aiohttp.ClientResponseError):
+                await auth_manager.execute_request(
+                    source=ApiSource.CONGRESS,
+                    endpoint="/test",
+                    method="GET"
+                )
+                
+            # Verify that the session was closed (cleanup)
+            assert session.closed
+            
+    # Run the async test
+    asyncio.run(test_async())
+
+
+def test_execute_request_content_types():
+    """Test handling different content types in execute_request."""
+    # This tests lines 397, 400-404
+    
+    auth_manager = AuthManager()
+    auth_manager.add_key(ApiSource.CONGRESS, "test_key")
+    
+    # Create a mock response for non-JSON content
+    class MockTextResponse:
+        def __init__(self):
+            self.status = 200
+            self.headers = {"Content-Type": "text/plain"}
+            self.release_called = False
+            
+        async def json(self):
+            # This should fail since it's not JSON
+            raise ValueError("Not JSON")
+            
+        async def text(self):
+            return "Plain text response"
+            
+        async def release(self):
+            self.release_called = True
+            
+        async def raise_for_status(self):
+            # No error
+            pass
+    
+    class MockSession:
+        def __init__(self):
+            self.response = MockTextResponse()
+            self.closed = False
+            
+        async def __aenter__(self):
+            return self
+            
+        async def __aexit__(self, *args):
+            pass
+            
+        async def request(self, method, url, **kwargs):
+            return self.response
+            
+        async def close(self):
+            self.closed = True
+    
+    # Test the function
+    @pytest.mark.asyncio
+    async def test_async():
+        session = MockSession()
+        # Direct patch of aiohttp.ClientSession instead of auth_manager method
+        with patch('aiohttp.ClientSession', return_value=session):
+            result = await auth_manager.execute_request(
+                source=ApiSource.CONGRESS,
+                endpoint="/test",
+                method="GET"
+            )
+            
+            # Verify text response handling
+            assert result == {"text": "Plain text response"}
+            
+            # Verify that release was called
+            assert session.response.release_called
+            
+            # Verify that the session was closed
+            assert session.closed
+    
+    # Run the async test
+    asyncio.run(test_async())

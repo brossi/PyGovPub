@@ -114,6 +114,10 @@ def pytest_collection_modifyitems(config, items):
                 is_stub = True
         except Exception as e:
             print(f"  Error checking source: {e}")
+        
+        # Special override for our test run - don't exclude the tests we want to run
+        if "test_file_match_in_analyze_test_stubs" in item.name or "test_test_stubs_module_path_mapping" in item.name:
+            is_stub = False
             
         # Add non-stub tests to the list
         if not is_stub:

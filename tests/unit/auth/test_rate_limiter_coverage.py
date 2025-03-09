@@ -207,7 +207,7 @@ def test_wait_for_capacity_timeout():
 
 def test_pre_request_with_custom_strategy():
     """Test pre_request with custom strategy."""
-    # STUB: This tests line 216
+    # This tests line 216
     limiter = RateLimiter()
     
     # Save the original memory limits
@@ -285,3 +285,202 @@ def test_rate_limit_data_expired():
     
     # Check that it's not expired
     assert not data.is_expired()
+
+
+def test_reset_memory_limits():
+    """Test reset_memory_limits method."""
+    # This tests lines 238-241
+    limiter = RateLimiter()
+    
+    # Set remaining to a low value
+    limiter._memory_limits[ApiSource.CONGRESS]["remaining"] = 10
+    
+    # Set reset time to past
+    past_time = datetime.now(ZoneInfo("UTC")) - timedelta(seconds=60)
+    limiter._memory_limits[ApiSource.CONGRESS]["reset_time"] = past_time
+    
+    # Call reset method
+    limiter._reset_memory_limits(ApiSource.CONGRESS)
+    
+    # Verify limits were reset
+    assert limiter._memory_limits[ApiSource.CONGRESS]["remaining"] == limiter._memory_limits[ApiSource.CONGRESS]["limit"]
+    assert limiter._memory_limits[ApiSource.CONGRESS]["reset_time"] > datetime.now(ZoneInfo("UTC"))
+
+
+def test_check_rate_limit_reset_conditions():
+    """Test check_rate_limit with reset conditions."""
+    # This tests lines 155-158
+    
+    @pytest.mark.asyncio
+    async def test_async():
+        limiter = RateLimiter()
+        
+        # Set reset time to past to trigger reset
+        past_time = datetime.now(ZoneInfo("UTC")) - timedelta(seconds=60)
+        limiter._memory_limits[ApiSource.CONGRESS]["reset_time"] = past_time
+        
+        # Set remaining to 0 to make it look like we're out of requests
+        limiter._memory_limits[ApiSource.CONGRESS]["remaining"] = 0
+        
+        # Call check_rate_limit - should reset since reset_time is in the past
+        allowed, reset_time = await limiter.check_rate_limit(ApiSource.CONGRESS)
+        
+        # Should be allowed again after reset
+        assert allowed
+        assert reset_time == limiter._memory_limits[ApiSource.CONGRESS]["reset_time"]
+        assert limiter._memory_limits[ApiSource.CONGRESS]["remaining"] == limiter._memory_limits[ApiSource.CONGRESS]["limit"]
+    
+    # Run the async test
+    asyncio.run(test_async())
+
+
+def test_wait_for_capacity_invalid_reset():
+    """Test wait_for_capacity with invalid reset time."""
+    # This tests line 183
+    
+    @pytest.mark.asyncio
+    async def test_async():
+        limiter = RateLimiter()
+        
+        # Mock check_rate_limit to return not allowed with None reset time to trigger the default wait path
+        async def mock_check_rate_limit(source):
+            return False, None
+        
+        # Patch asyncio.sleep to avoid actual waiting
+        with patch.object(limiter, 'check_rate_limit', side_effect=[
+                (False, None),  # First call - not allowed, no reset time
+                (True, None)    # Second call - allowed (to exit the loop)
+            ]), \
+             patch('asyncio.sleep') as mock_sleep:
+            
+            # Call wait_for_capacity
+            await limiter.wait_for_capacity(ApiSource.CONGRESS)
+            
+            # Verify default sleep was used
+            mock_sleep.assert_called_once_with(5)
+    
+    # Run the async test
+    asyncio.run(test_async())
+
+
+def test_db_rate_limit_lookup():
+    """Test database lookup in check_rate_limit."""
+    # This tests lines 135-146
+    
+    @pytest.mark.asyncio
+    async def test_async():
+        # Create a mock session factory
+        class MockApiUsage:
+            def __init__(self):
+                self.source = ApiSource.CONGRESS
+                self.rate_limit_remaining = 50
+                self.rate_limit_reset = datetime.now(ZoneInfo("UTC")) + timedelta(minutes=10)
+        
+        class MockResult:
+            def first(self):
+                return MockApiUsage()
+        
+        class MockSession:
+            def __enter__(self):
+                return self
+            
+            def __exit__(self, *args):
+                pass
+            
+            def exec(self, stmt):
+                return MockResult()
+        
+        def mock_session_factory():
+            return MockSession()
+        
+        # Create limiter with session factory
+        limiter = RateLimiter(session_factory=mock_session_factory)
+        
+        # Set memory limits to be low
+        limiter._memory_limits[ApiSource.CONGRESS]["remaining"] = 5
+        
+        # Check rate limit
+        allowed, reset_time = await limiter.check_rate_limit(ApiSource.CONGRESS)
+        
+        # Should use DB values (50 remaining) instead of memory values (5 remaining)
+        assert allowed
+        assert reset_time.tzinfo is not None  # Timezone info should be preserved
+    
+    # Run the async test
+    asyncio.run(test_async())
+
+
+def test_track_request_db_exception():
+    """Test track_request with database exception."""
+    # This tests lines 116-118
+    
+    @pytest.mark.asyncio
+    async def test_async():
+        # Create a mock session factory that raises an exception
+        def mock_session_factory():
+            class MockSessionThatFails:
+                def __enter__(self):
+                    # Raise an exception when trying to enter the context
+                    raise Exception("Database connection error")
+                    
+                def __exit__(self, *args):
+                    pass
+                    
+            return MockSessionThatFails()
+            
+        # Create a limiter with our failing session factory
+        limiter = RateLimiter(session_factory=mock_session_factory)
+        
+        # Call track_request - it should handle the exception gracefully
+        try:
+            await limiter.track_request(
+                source=ApiSource.CONGRESS, 
+                endpoint="/test", 
+                status_code=200
+            )
+            # If we reach here, the exception was handled correctly
+            success = True
+        except Exception:
+            success = False
+            
+        # The function should have caught the exception and continued
+        assert success
+    
+    # Run the async test
+    asyncio.run(test_async())
+
+
+def test_check_rate_limit_db_exception():
+    """Test check_rate_limit with database exception."""
+    # This tests lines 147-149
+    
+    @pytest.mark.asyncio
+    async def test_async():
+        # Create a mock session factory that raises an exception
+        def mock_session_factory():
+            class MockSessionThatFails:
+                def __enter__(self):
+                    # Raise an exception when trying to enter the context
+                    raise Exception("Database connection error")
+                    
+                def __exit__(self, *args):
+                    pass
+                    
+            return MockSessionThatFails()
+            
+        # Create a limiter with our failing session factory
+        limiter = RateLimiter(session_factory=mock_session_factory)
+        
+        # Set known values in memory to verify fallback
+        limiter._memory_limits[ApiSource.CONGRESS]["remaining"] = 10
+        expected_reset = limiter._memory_limits[ApiSource.CONGRESS]["reset_time"]
+        
+        # Call check_rate_limit - it should handle the exception by falling back to memory
+        allowed, reset_time = await limiter.check_rate_limit(ApiSource.CONGRESS)
+        
+        # Should have used memory fallback
+        assert allowed  # Because remaining is 10
+        assert reset_time == expected_reset
+    
+    # Run the async test
+    asyncio.run(test_async())
