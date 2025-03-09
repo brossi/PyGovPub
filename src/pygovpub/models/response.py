@@ -33,6 +33,12 @@ class ResponseMetadata(BaseModel):
     source_updated_at: Optional[datetime] = None
     """When the data was last updated at the source API."""
     
+    api_version: Optional[str] = None
+    """API version string reported by the source API."""
+    
+    schema_version: Optional[str] = None
+    """Schema version hash for the response data."""
+    
     @field_validator('processing_time_ms', 'count')
     @classmethod
     def validate_non_negative(cls, value: Optional[int]) -> Optional[int]:
@@ -145,7 +151,10 @@ class ApiResponse(BaseModel, Generic[T]):
         previous_page_url: Optional[str] = None,
         request_id: Optional[str] = None,
         processing_time_ms: Optional[int] = None,
-        source_updated_at: Optional[datetime] = None
+        source_updated_at: Optional[datetime] = None,
+        api_version: Optional[str] = None,
+        schema_version: Optional[str] = None,
+        endpoint: Optional[str] = None
     ) -> 'ApiResponse[T]':
         """Create a successful response with data.
         
@@ -161,6 +170,9 @@ class ApiResponse(BaseModel, Generic[T]):
             request_id: Unique identifier for the request
             processing_time_ms: Time taken to process the request in milliseconds
             source_updated_at: When the data was last updated at the source API
+            api_version: API version string reported by the source
+            schema_version: Schema version hash for validation
+            endpoint: API endpoint that generated this response
             
         Returns:
             An ApiResponse instance with the provided data
@@ -172,6 +184,13 @@ class ApiResponse(BaseModel, Generic[T]):
             except (TypeError, AttributeError):
                 count = 1 if data is not None else 0
                 
+        # Get schema version from monitoring if not provided
+        if schema_version is None and endpoint:
+            from pygovpub.core.schema_monitor import default_monitor
+            key = f"{source.value}:{endpoint}"
+            if hasattr(default_monitor, "versions") and key in default_monitor.versions:
+                schema_version = default_monitor.versions[key].schema_hash
+        
         # Create metadata
         metadata = ResponseMetadata(
             source=source,
@@ -179,7 +198,9 @@ class ApiResponse(BaseModel, Generic[T]):
             request_id=request_id,
             processing_time_ms=processing_time_ms,
             count=count,
-            source_updated_at=source_updated_at
+            source_updated_at=source_updated_at,
+            api_version=api_version,
+            schema_version=schema_version
         )
         
         # Create pagination
