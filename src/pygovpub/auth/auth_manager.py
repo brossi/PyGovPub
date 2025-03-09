@@ -10,12 +10,13 @@ Congress.gov and GovInfo.gov, including:
 
 import base64
 import os
+import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from enum import Enum
 import json
 import logging
-from typing import Dict, Optional, Union, Any, Callable
+from typing import Dict, Optional, Union, Any, Callable, Set
 from urllib.parse import urljoin
 
 import aiohttp
@@ -39,13 +40,13 @@ logger = logging.getLogger("pygovpub.auth")
 
 class VersionCompatibility(BaseModel):
     """API version compatibility information."""
-    
+
     major: int
     minor: int
     patch: Optional[int] = None
     min_supported: str = Field(...)
     max_supported: Optional[str] = None
-    
+
     @field_validator("min_supported", "max_supported")
     @classmethod
     def validate_version_format(cls, v):
@@ -57,11 +58,11 @@ class VersionCompatibility(BaseModel):
 
 class ApiKeyStore:
     """Secure storage for API keys."""
-    
+
     def __init__(self, encryption_key: Optional[str] = None):
         """Initialize key store with optional encryption key."""
         self._keys = {}
-        
+
         # Use provided key or generate from environment
         if encryption_key:
             self._encryption_key = encryption_key.encode()
@@ -72,46 +73,46 @@ class ApiKeyStore:
             else:
                 # Generate random key if none provided
                 self._encryption_key = Fernet.generate_key()
-                
+
         self._fernet = Fernet(self._encryption_key)
-        
+
     def store_key(self, source: ApiSource, key: str) -> None:
         """
         Store an API key securely.
-        
+
         Args:
             source: API source identifier
             key: API key to store
         """
         if not key or not source:
             raise ValueError("API source and key are required")
-            
+
         # Encrypt the key
         encrypted = self._fernet.encrypt(key.encode())
         self._keys[source] = encrypted
-        
+
     def get_key(self, source: ApiSource) -> Optional[str]:
         """
         Get a stored API key.
-        
+
         Args:
             source: API source identifier
-            
+
         Returns:
             Decrypted API key or None if not found
         """
         encrypted = self._keys.get(source)
         if not encrypted:
             return None
-            
+
         # Decrypt the key
         decrypted = self._fernet.decrypt(encrypted)
         return decrypted.decode()
-        
+
     def has_key(self, source: ApiSource) -> bool:
         """Check if key exists for source."""
         return source in self._keys
-        
+
     def remove_key(self, source: ApiSource) -> None:
         """Remove a stored key."""
         if source in self._keys:
@@ -121,20 +122,20 @@ class ApiKeyStore:
 class AuthManager:
     """
     Authentication manager for API requests.
-    
+
     Handles API key management, authentication, and rate limiting
     for requests to Congress.gov and GovInfo.gov APIs.
     """
-    
+
     def __init__(
-        self, 
+        self,
         session_factory: Optional[Callable[[], Session]] = None,
         rate_limit_strategy: ThrottleStrategy = ThrottleStrategy.WAIT,
         encryption_key: Optional[str] = None
     ):
         """
         Initialize authentication manager.
-        
+
         Args:
             session_factory: Function to get database session
             rate_limit_strategy: Strategy for handling rate limits
@@ -143,7 +144,7 @@ class AuthManager:
         self.key_store = ApiKeyStore(encryption_key)
         self.rate_limiter = RateLimiter(session_factory, rate_limit_strategy)
         self._session_factory = session_factory
-        
+
         # API version compatibility info
         self._version_info = {
             ApiSource.CONGRESS: VersionCompatibility(
@@ -158,61 +159,61 @@ class AuthManager:
                 min_supported="2.0"
             )
         }
-        
+
         # Check for environment keys
         self._load_env_keys()
-        
+
     def _load_env_keys(self) -> None:
         """Load API keys from environment variables."""
         congress_key = os.getenv("CONGRESS_GOV_API_KEY")
         if congress_key:
             self.key_store.store_key(ApiSource.CONGRESS, congress_key)
-            
+
         govinfo_key = os.getenv("GOVINFO_API_KEY")
         if govinfo_key:
             self.key_store.store_key(ApiSource.GOVINFO, govinfo_key)
-            
+
     def add_key(self, source: ApiSource, key: str) -> None:
         """
         Add an API key.
-        
+
         Args:
             source: API source
             key: API key to add
         """
         if not key:
             raise ValueError("API key cannot be empty")
-            
+
         self.key_store.store_key(source, key)
-        
+
     def remove_key(self, source: ApiSource) -> None:
         """
         Remove an API key.
-        
+
         Args:
             source: API source
         """
         self.key_store.remove_key(source)
-        
+
     def has_key(self, source: ApiSource) -> bool:
         """
         Check if API key exists for source.
-        
+
         Args:
             source: API source
-            
+
         Returns:
             True if key exists, False otherwise
         """
         return self.key_store.has_key(source)
-        
+
     def _get_auth_config(self, source: ApiSource) -> Dict[str, Any]:
         """
         Get authentication configuration for API source.
-        
+
         Args:
             source: API source
-            
+
         Returns:
             Dictionary with auth configuration
         """
@@ -226,7 +227,7 @@ class AuthManager:
                         .where(ApiConfiguration.active == True)
                     )
                     config = session.exec(stmt).first()
-                    
+
                     if config:
                         return {
                             "auth_type": config.auth_type,
@@ -235,7 +236,7 @@ class AuthManager:
                         }
             except Exception as e:
                 logger.warning(f"Failed to get DB auth config: {e}")
-                
+
         # Fall back to default configuration
         if source == ApiSource.CONGRESS:
             return {
@@ -249,11 +250,11 @@ class AuthManager:
                 "auth_key_name": "api_key",
                 "base_url": "https://api.govinfo.gov"
             }
-            
+
         raise ValueError(f"Unsupported API source: {source}")
-        
+
     def authenticate_request(
-        self, 
+        self,
         source: ApiSource,
         endpoint: str,
         method: str = "GET",
@@ -262,50 +263,50 @@ class AuthManager:
     ) -> Dict[str, Any]:
         """
         Prepare request with authentication.
-        
+
         Args:
             source: API source
             endpoint: API endpoint
             method: HTTP method
             params: Query parameters
             headers: HTTP headers
-            
+
         Returns:
             Dictionary with authenticated request details
-            
+
         Raises:
             AuthenticationError: If authentication fails
         """
         if not self.has_key(source):
             raise AuthenticationError(f"No API key available for {source}")
-            
+
         auth_config = self._get_auth_config(source)
         api_key = self.key_store.get_key(source)
-        
+
         # Prepare request components
         request_params = params.copy() if params else {}
         request_headers = headers.copy() if headers else {}
-        
+
         # Add authentication
         if auth_config["auth_type"] == AuthType.HEADER:
             request_headers[auth_config["auth_key_name"]] = api_key
         elif auth_config["auth_type"] == AuthType.PARAMETER:
             request_params[auth_config["auth_key_name"]] = api_key
-            
+
         # Construct URL
         base_url = auth_config["base_url"]
         # Ensure base_url doesn't have trailing slash and endpoint starts with slash
         if not endpoint.startswith('/'):
             endpoint = '/' + endpoint
         url = base_url + endpoint
-        
+
         return {
             "url": url,
             "method": method,
             "params": request_params,
             "headers": request_headers
         }
-        
+
     async def execute_request(
         self,
         source: ApiSource,
@@ -318,7 +319,7 @@ class AuthManager:
     ) -> Dict[str, Any]:
         """
         Execute authenticated API request with rate limiting.
-        
+
         Args:
             source: API source
             endpoint: API endpoint
@@ -327,10 +328,10 @@ class AuthManager:
             headers: HTTP headers
             json_data: JSON request body
             timeout: Request timeout in seconds
-            
+
         Returns:
             JSON response data
-            
+
         Raises:
             AuthenticationError: If authentication fails
             RateLimitExceededError: If rate limit exceeded
@@ -343,13 +344,13 @@ class AuthManager:
             params=params,
             headers=headers
         )
-        
+
         # Check rate limits
         try:
             await self.rate_limiter.pre_request(source)
         except Exception as e:
             raise RateLimitExceededError(f"Rate limit exceeded: {e}")
-            
+
         # Execute request
         start_time = datetime.now(ZoneInfo("UTC"))
         success = False
@@ -357,7 +358,7 @@ class AuthManager:
         error_message = None
         response_time_ms = None
         rate_limit_headers = None
-        
+
         try:
             # Create a session
             session = aiohttp.ClientSession()
@@ -371,37 +372,61 @@ class AuthManager:
                     json=json_data,
                     timeout=timeout
                 )
-                
+
                 # Process the response
-                status_code = response.status
+                try:
+                    status_code = int(response.status)
+                except (TypeError, ValueError):
+                    status_code = 0  # Default to 0 if we can't get a valid status code
                 response_time_ms = int((datetime.now(ZoneInfo("UTC")) - start_time).total_seconds() * 1000)
-                rate_limit_headers = {k.lower(): v for k, v in response.headers.items()}
-                
+
+                # Get headers safely
+                headers_dict = {}
+                if hasattr(response.headers, 'items'):
+                    try:
+                        if asyncio.iscoroutine(response.headers.items) or asyncio.iscoroutinefunction(response.headers.items):
+                            headers_items = await response.headers.items()
+                        else:
+                            headers_items = response.headers.items()
+                        headers_dict = {k.lower(): v for k, v in headers_items}
+                    except Exception as e:
+                        logger.warning(f"Failed to process response headers: {e}")
+                rate_limit_headers = headers_dict
+
                 # Check for auth errors
-                if status_code == 401 or status_code == 403:
+                if status_code in (401, 403):
                     error_message = f"Authentication failed: {status_code}"
                     raise AuthenticationError(error_message)
-                    
+
                 # Check other error status
                 if status_code >= 400:
                     error_message = f"Request failed with status {status_code}"
-                    response.raise_for_status()
-                    
+                    await response.raise_for_status()
+
                 # Parse response body
                 success = True
                 # Process response content
-                if "application/json" in response.headers.get("Content-Type", ""):
-                    result = await response.json()
-                    # Only call release if the method exists (actual aiohttp has it, our mock might not)
-                    if hasattr(response, 'release'):
-                        await response.release()
-                    return result
-                else:
-                    text = await response.text()
-                    # Only call release if the method exists (actual aiohttp has it, our mock might not)
-                    if hasattr(response, 'release'):
-                        await response.release()
-                    return {"text": text}
+                try:
+                    # Try to get content type from headers
+                    try:
+                        content_type = response.headers.get("Content-Type", "")
+                    except Exception:
+                        content_type = "application/json"
+
+                    # Try JSON first, fall back to text
+                    try:
+                        json_result = await response.json()
+                        if hasattr(response, 'release'):
+                            await response.release()
+                        return json_result
+                    except Exception:
+                        text = await response.text()
+                        if hasattr(response, 'release'):
+                            await response.release()
+                        return {"text": text}
+                except Exception as e:
+                    logger.warning(f"Failed to process response content: {e}")
+                    raise
             finally:
                 # Make sure to close the session
                 await session.close()
@@ -422,47 +447,47 @@ class AuthManager:
                 success=success,
                 error_message=error_message
             )
-            
+
     def check_version_compatibility(self, source: ApiSource, version: str) -> bool:
         """
         Check if API version is compatible.
-        
+
         Args:
             source: API source
             version: API version string
-            
+
         Returns:
             True if compatible, False otherwise
         """
         compat = self._version_info.get(source)
         if not compat:
             return True  # No compatibility info, assume compatible
-            
+
         version_parts = version.split(".")
         if len(version_parts) < 2:
             return False
-            
+
         try:
             major = int(version_parts[0])
             minor = int(version_parts[1])
-            
+
             min_parts = compat.min_supported.split(".")
             min_major = int(min_parts[0])
             min_minor = int(min_parts[1])
-            
+
             # Check minimum compatibility
             if major < min_major or (major == min_major and minor < min_minor):
                 return False
-                
+
             # Check maximum compatibility if specified
             if compat.max_supported:
                 max_parts = compat.max_supported.split(".")
                 max_major = int(max_parts[0])
                 max_minor = int(max_parts[1])
-                
+
                 if major > max_major or (major == max_major and minor > max_minor):
                     return False
-                    
+
             return True
         except (ValueError, IndexError):
             return False

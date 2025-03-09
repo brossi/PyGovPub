@@ -51,7 +51,7 @@ COV|proj_cov.py=[BASIC,--pkg=X,--report,--hist,--all-pkgs,--verb]|# STUB: tests 
 ## Segment Legend
 TS=Test Structure|IR=Import Resolution|DT=Datetime Handling|P3.13=Python 3.13|TEST=Testing Practice|MOCK=Mock Services|CMD=Commands|ENV=Environment|WF=Workflow|AUTH=Auth Module|CORE=Core Principles|COV=Coverage Strategies
 
-## Abbrev Legend  
+## Abbrev Legend
 pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipulation|ZI=ZoneInfo|err=error|ctx_mgr=context manager|dec=decorator|indep=independent|rd=read docs|rt=run tests|wt=write tests|impl=implement|simp=simple|opt=optimization|m=mock|pkg_r=pkg_resources|field_v=field_validator|v=validator|fk=Field(discriminator_key)|importlib.m=importlib.metadata|proj_cov=projected_coverage|term-miss=term-missing|req_async=required_for_async_tests|BASIC=basic command|--pkg=package parameter|--hist=history parameter|--all-pkgs=all-packages parameter|--verb=verbose parameter|tracker=coverage history tracker
 
 ## Expanded Knowledge
@@ -173,7 +173,7 @@ def test_api_credential_validation():
 import importlib.metadata
 
 # Get installed packages
-installed_packages = {dist.metadata["Name"].lower() 
+installed_packages = {dist.metadata["Name"].lower()
                      for dist in importlib.metadata.distributions()}
 
 # Pydantic v2 field validation
@@ -182,13 +182,13 @@ from typing import Optional
 
 class VersionCompatibility(BaseModel):
     """API version compatibility information."""
-    
+
     major: int
     minor: int
     patch: Optional[int] = None
     min_supported: str = Field(...)
     max_supported: Optional[str] = None
-    
+
     @field_validator("min_supported", "max_supported")
     @classmethod
     def validate_version_format(cls, v):
@@ -264,3 +264,169 @@ fixed_XML=fixes for XML file handling|graceful_err=graceful error handling|fallb
 `[Claude.Anthropic.3.7.Sonnet-20250308-TestMaintenancePractices-2025-03-08-22:00-UTC]`
 
 `[Claude.Anthropic.3.7.Sonnet-20250308-CoverageToolImprovements-2025-03-08-21:46-UTC]`
+
+## LEARNINGS-003
+
+```
+SA_TEST|basic→metrics→patterns|desc_names|err_cases|NO:skip_basics
+PATTERN|norm_code|thresh_by_type|struct+sem|loc+fn|sev+suggest
+COMPLEX|cyclo=decision_pts|cog=nest+logic|maint=halstead|trend_track|flag>thresh
+DEP|aff+eff_couple|Ce/(Ca+Ce)|circ_dep|abstract+dist|pkg_deps
+ERR|custom_types|ctx_msg|file+line|fallback|warn_non_crit
+MAINT|complex+vol|comments+names|trends|ctx_thresh|prod_vs_test
+SMELL|large_cls|feat_envy|data_only|prim_obs|long_params|ctx_aware|suggest
+PERF|ast_cache|incr_upd|parallel|profile|mem_watch
+TEST|indep_feat|edge+err|real_code|manual_verify|perf_test
+INTEG|cli+prog|machine_fmt|trends|ci_cd|cfg_file
+```
+
+## Segment Legend
+SA_TEST=Source Analysis Test Organization|PATTERN=Pattern Detection|COMPLEX=Complexity Analysis|DEP=Dependency Analysis|ERR=Error Handling|MAINT=Maintainability|SMELL=Code Smells|PERF=Performance|TEST=Testing Strategy|INTEG=Integration
+
+## Abbrev Legend
+basic=basic functionality|metrics=metric calculations|patterns=pattern detection|desc_names=descriptive names|err_cases=error cases|norm_code=normalize code|thresh_by_type=threshold by type|struct+sem=structural and semantic|loc+fn=location and function|sev+suggest=severity and suggestions|cyclo=cyclomatic|cog=cognitive|maint=maintainability|nest=nesting|logic=logical operations|trend_track=trend tracking|flag>thresh=flag above threshold|aff=afferent|eff=efferent|circ_dep=circular dependencies|abstract+dist=abstractness and distance|pkg_deps=package dependencies|ctx_msg=context message|complex+vol=complexity and volume|ctx_thresh=context-specific thresholds|prod_vs_test=production vs test code|large_cls=large classes|feat_envy=feature envy|data_only=data-only classes|prim_obs=primitive obsession|long_params=long parameter lists|ctx_aware=context aware|ast_cache=AST caching|incr_upd=incremental updates|mem_watch=memory monitoring|indep_feat=independent features|edge+err=edge cases and errors|real_code=real-world code|manual_verify=manual verification|perf_test=performance testing|cli+prog=CLI and programmatic|machine_fmt=machine format|ci_cd=CI/CD integration|cfg_file=configuration file
+
+## Example Patterns
+
+```python
+# Pattern Detection
+def detect_duplicates(source_code: str) -> List[DuplicateBlock]:
+    normalized = normalize_code(source_code)
+    return find_similar_blocks(normalized, threshold=0.7)
+
+# Complexity Analysis
+def calculate_complexity(node: ast.AST) -> ComplexityMetrics:
+    cyclomatic = count_decision_points(node)
+    cognitive = assess_nesting_and_logic(node)
+    maintainability = calculate_maintainability_index(node)
+    return ComplexityMetrics(cyclomatic, cognitive, maintainability)
+
+# Dependency Analysis
+def analyze_dependencies(module: ModuleType) -> DependencyMetrics:
+    afferent = count_incoming_deps(module)
+    efferent = count_outgoing_deps(module)
+    instability = efferent / (afferent + efferent) if (afferent + efferent) > 0 else 1.0
+    return DependencyMetrics(afferent, efferent, instability)
+
+# Code Smell Detection
+def detect_code_smells(node: ast.AST) -> List[CodeSmell]:
+    smells = []
+    if is_large_class(node):
+        smells.append(CodeSmell("large_class", severity=HIGH))
+    if has_primitive_obsession(node):
+        smells.append(CodeSmell("primitive_obsession", severity=MEDIUM))
+    return smells
+```
+
+`[Claude.Anthropic.3.7.Sonnet-20250308-SourceAnalysisPatterns-2025-03-08-22:15-UTC]`
+
+## LEARNINGS-004
+
+```
+METRICS|loc≠sloc≠comments|blank_count|multi_doc|re_patterns|norm_code
+METRICS|cache_results|incr_calc|ast+lines|ctx_aware|perf_opt
+METRICS|doc_ratio=maint|comment_qual>quant|nested_calc|line_map
+VERIFY|test_all_metrics|edge_cases|empty_files|huge_files|err_handle
+INTEG|cli+api|machine_fmt|trends|ci_cd|cfg_file
+```
+
+## Segment Legend for LEARNINGS-004
+METRICS=Code Metrics Calculation|VERIFY=Verification Strategy|INTEG=Integration
+
+## Abbrev Legend for LEARNINGS-004
+loc=lines of code|sloc=source lines of code|multi_doc=multi-line docstrings|re_patterns=regex patterns|norm_code=normalize code|cache_results=cache calculation results|incr_calc=incremental calculation|ast+lines=AST and line-based analysis|ctx_aware=context aware|perf_opt=performance optimization|doc_ratio=documentation ratio|maint=maintainability|comment_qual>quant=comment quality over quantity|nested_calc=nested calculation|line_map=line mapping|edge_cases=edge case testing|err_handle=error handling|cli+api=CLI and API|machine_fmt=machine format|ci_cd=CI/CD integration|cfg_file=configuration file
+
+## Expanded Knowledge for LEARNINGS-004
+
+### Code Metrics Calculation (METRICS)
+- Different line count metrics serve different purposes:
+  - `loc`: Total lines of code (all lines in file)
+  - `sloc`: Source lines of code (excluding comments and blank lines)
+  - `comments`: Comment lines (including docstrings)
+  - `blank`: Blank lines
+  - `multi`: Multi-line string/docstring lines
+- Use regex patterns to accurately identify different line types:
+  - Comment pattern: `r'^\s*#'`
+  - Docstring start: `r'^\s*(\'\'\'|""")'`
+  - Docstring end: `r'(\'\'\'|""")$'`
+- Track multi-line constructs with state variables (e.g., `in_multiline = True/False`)
+- Cache calculation results for frequently analyzed files
+- Implement incremental calculation for changed files only
+- Combine AST-based and line-based analysis for comprehensive metrics
+- Consider context (module type, function purpose) when interpreting metrics
+- Optimize performance for large files with efficient algorithms
+- Calculate documentation ratio as a maintainability indicator
+- Focus on comment quality over quantity in analysis
+- Implement nested calculations for complex metrics
+- Maintain line mapping between source and normalized code
+
+### Verification Strategy (VERIFY)
+- Test all metrics with diverse code samples
+- Include edge cases in testing:
+  - Empty files
+  - Files with only comments
+  - Single-line docstrings
+  - Multi-line docstrings
+  - Mixed comment styles
+- Test with extremely large files to verify performance
+- Implement comprehensive error handling for malformed files
+- Verify metrics against manual calculations
+
+### Integration Considerations (INTEG)
+- Support both command-line and API usage
+- Provide machine-readable output formats (JSON, CSV)
+- Include trend analysis capabilities
+- Support CI/CD integration
+- Allow configuration via config files
+
+## Example Patterns
+
+```python
+# Line Counting Implementation
+def count_code_lines(source_code: str) -> Dict[str, int]:
+    """Count different types of lines in source code."""
+    lines = source_code.splitlines()
+
+    # Initialize counters
+    metrics = {
+        "loc": len(lines),  # Total lines of code
+        "blank": 0,         # Blank lines
+        "comments": 0,      # Comment lines
+        "multi": 0,         # Multi-line string/docstring lines
+    }
+
+    # Regex patterns for line type detection
+    comment_pattern = re.compile(r'^\s*#')
+    docstring_start = re.compile(r'^\s*(\'\'\'|""")')
+    docstring_end = re.compile(r'(\'\'\'|""")$')
+
+    # Track multi-line docstring state
+    in_multiline = False
+
+    # Analyze each line
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            metrics["blank"] += 1
+        elif comment_pattern.match(line):
+            metrics["comments"] += 1
+        elif docstring_start.match(stripped) and docstring_end.search(stripped) and len(stripped) > 3:
+            # Single line docstring
+            metrics["comments"] += 1
+        elif docstring_start.match(stripped):
+            in_multiline = True
+            metrics["comments"] += 1
+            metrics["multi"] += 1
+        elif in_multiline:
+            metrics["comments"] += 1
+            metrics["multi"] += 1
+            if docstring_end.search(stripped):
+                in_multiline = False
+
+    # Calculate source lines of code
+    metrics["sloc"] = metrics["loc"] - metrics["comments"] - metrics["blank"]
+
+    return metrics
+```
+
+`[Claude.Anthropic.3.7.Sonnet-20250309-CodeMetricsCalculation-2025-03-09-06:00-UTC]`

@@ -98,13 +98,14 @@ PyGovPub is a Python SDK that provides unified access to U.S. Federal Government
    - Transaction-based data updates
 
 ## Commands
-- **Environment Setup**: 
+- **Environment Setup**:
   - Activate the virtual environment: `source venv/bin/activate`
   - Install in development mode: `pip install -e .`
-- **Run Tests**: 
+- **Run Tests**:
   - All tests: `pytest`
   - Specific test: `pytest tests/unit/pygovpub/auth/test_models.py::test_function_name`
   - With coverage: `pytest --cov=pygovpub tests/unit/`
+  - Full test suite with detailed output: `./test_refactor.sh --package pygovpub --test-path tests/unit/ --detailed`
 - **Linting**: `flake8` or `ruff check .`
 - **Type Checking**: `mypy .`
 - **Format Code**: `black .`
@@ -118,6 +119,11 @@ PyGovPub is a Python SDK that provides unified access to U.S. Federal Government
   - Check coverage history: `./utilities/projected_coverage.py --history`
   - Analyze all packages: `./utilities/projected_coverage.py --all-packages`
   - Detailed verbose output: `./utilities/projected_coverage.py --verbose`
+- **Source Analysis and Refactoring**:
+  - Run source analysis: `python -m utilities.source_analyzer --path <path_to_file_or_directory>`
+  - Run refactoring analysis: `./test_refactor.sh --package <package_name> --test-path <test_path>`
+  - Run standalone refactoring analysis: `python -m utilities.refactor_analyzer --path <path_to_file_or_directory>`
+  - Run with intelligent timeout: `./test_refactor.sh --package <package_name> --timeout 0`
 
 IMPORTANT: Always use the Python 3.13 virtual environment in `venv/` for all development. This ensures consistent dependencies and package versions across all development environments.
 
@@ -299,6 +305,8 @@ The `planning/qa/` directory contains:
 
 ## Development Process
 
+Do not use the phrase: "I found the issue." or variants of the same meaning.
+
 ### Phase Sequencing
 Development MUST follow the phase sequence defined in `00-phase.md`:
 1. Local Development Environment [DX-003] ✅ COMPLETED
@@ -318,19 +326,79 @@ IMPORTANT: When implementing a phase, update the checklist in the corresponding 
 CRITICAL FOR ALL AI AGENTS: Before marking ANY task as complete [x] in the phase checklists, you MUST:
 
 1. Run the full test suite: `pytest`
-2. Verify ALL tests pass without errors or warnings
-3. If any tests fail:
+2. Run projected coverage analysis: `./utilities/projected_coverage.py --all-packages --verbose`
+3. Run source analysis on the relevant package: `python -m utilities.source_analyzer --path <package_path>`
+4. Run refactoring analysis: `./test_refactor.sh --package <package_name> --test-path <test_path>`
+5. Verify ALL tests pass without errors or warnings
+6. If any tests fail:
    - Fix all errors related to your implementation
    - Document any pre-existing errors that cannot be fixed in the current phase
    - Explain your reasoning for leaving any errors unfixed
 
-DO NOT mark tasks as complete until you have verified through testing that your implementation works correctly and integrates properly with the existing codebase. This verification step is non-negotiable and essential for maintaining code quality.
+DO NOT mark tasks as complete until you have verified through comprehensive testing that your implementation works correctly and integrates properly with the existing codebase. This verification step is non-negotiable and essential for maintaining code quality.
 
 Each completed task should:
 1. Be marked with [x] immediately after implementation AND verification
 2. Have its corresponding test implemented and passing
 3. Include any necessary documentation updates
 4. Follow the style guidelines and code quality standards
+5. Have passed all required test suites and analysis tools
+
+### Full Test Suite Execution
+The full test suite MUST be run before considering any task complete. This includes:
+
+1. **Unit Tests**: Verify individual components work as expected
+   ```bash
+   pytest tests/unit/
+   ```
+
+2. **Integration Tests**: Verify components work together correctly
+   ```bash
+   pytest tests/integration/
+   ```
+
+3. **Coverage Analysis**: Ensure adequate test coverage
+   ```bash
+   pytest --cov=pygovpub tests/
+   ./utilities/projected_coverage.py --all-packages --verbose
+   ```
+
+4. **Source Analysis**: Check code quality and complexity
+   ```bash
+   python -m utilities.source_analyzer --path src/pygovpub/
+   ```
+
+5. **Refactoring Analysis**: Identify potential improvements
+   ```bash
+   ./test_refactor.sh --package pygovpub --test-path tests/unit/ --detailed
+   ```
+
+6. **Combined Test and Analysis**: Run all tests and analysis in one command
+   ```bash
+   ./test_refactor.sh --package pygovpub --test-path tests/unit/ --detailed
+   ```
+
+### Session Initialization Requirement
+MANDATORY FOR ALL AI AGENTS: At the beginning of EVERY new session, you MUST:
+
+1. Run the full test suite to establish the current state of the codebase:
+   ```bash
+   ./test_refactor.sh --package pygovpub --test-path tests/unit/ --detailed
+   ```
+
+2. Review the test results to understand:
+   - Current passing/failing tests
+   - Code coverage status
+   - Identified code quality issues
+   - Refactoring opportunities
+
+3. Summarize the test results for the user, highlighting:
+   - Overall test pass/fail status
+   - Coverage percentage
+   - Critical issues that need attention
+   - Stubs that need implementation
+
+This initialization process is required before engaging in any development tasks to ensure you have an accurate understanding of the current codebase state.
 
 ### Quality Gates
 Each phase must pass the quality gates defined in `08-completion.md`:
@@ -341,6 +409,7 @@ Each phase must pass the quality gates defined in `08-completion.md`:
 5. Static type checking passes
 6. Documentation complete
 7. Commit hash recorded
+8. Full test suite execution completed with all analyses
 
 ### Test Maintenance Best Practices
 When adding new features or command-line options, remember to update all test mocks:
@@ -348,11 +417,11 @@ When adding new features or command-line options, remember to update all test mo
 1. **Update all test mocks**: When adding a new parameter to any function or CLI, add it to all mock objects
    - Example: After adding `--all-packages` to a CLI tool, add `all_packages = False` to all mock argument objects
    - This applies even to tests not directly testing the new functionality
-   
+
 2. **Match exact output formats**: When mocking output formats (like reports), include all section markers and formatting
    - Example: Include section markers like `---------- coverage:` and respect exact spacing/indentation
    - Use real command output as reference for creating test mock data
-   
+
 3. **Fix failing tests immediately**: Don't let failing tests linger
    - Postponed fixes can mask real problems
    - Fixed tests increase confidence when making further changes

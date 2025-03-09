@@ -16,19 +16,19 @@ def setup_test_paths():
     """Configure Python path to ensure imports work correctly."""
     # Get project root directory (where conftest.py is located)
     project_root = Path(__file__).absolute().parent
-    
+
     # Source directory containing the package
     src_dir = project_root / 'src'
-    
+
     # Add paths to sys.path if not already there
     # This ensures both direct imports and package imports work
     for path in [str(project_root), str(src_dir)]:
         if path not in sys.path:
             sys.path.insert(0, path)
-    
+
     # Set PYTHONPATH environment variable for child processes
     os.environ['PYTHONPATH'] = f"{str(src_dir)}:{os.environ.get('PYTHONPATH', '')}"
-    
+
     return project_root, src_dir
 
 # Run path setup
@@ -64,11 +64,11 @@ try:
 
     # Get installed packages
     installed_packages = {dist.metadata["Name"].lower() for dist in importlib.metadata.distributions()}
-    
+
     # Check which required packages are missing
-    missing_packages = [pkg for pkg in required_packages 
+    missing_packages = [pkg for pkg in required_packages
                         if pkg.lower() not in installed_packages]
-    
+
     if missing_packages and not os.environ.get('CI'):
         print(f"Installing missing test dependencies: {', '.join(missing_packages)}")
         subprocess.check_call(
@@ -77,34 +77,34 @@ try:
         )
 except Exception as e:
     print(f"Warning: Failed to check or install dependencies: {e}", file=sys.stderr)
-    
+
 # Test collection hook to exclude test stubs
 def pytest_collection_modifyitems(config, items):
     """Modify test collection to exclude stubs and work-in-progress tests.
-    
+
     This hook identifies test stubs by their naming pattern and content,
     preventing them from being considered as failing tests without marking
     them as skipped.
-    
+
     Test stubs are identified by:
     - functions with "stub" in the name
     - functions with "# STUB:" or "# WIP:" comments at the start
     """
     # Initialize empty list for the tests to run
     selected_items = []
-    
+
     # For debugging
     print("\nTest Collection:")
-    
+
     for item in items:
         # Check for stub patterns
         is_stub = False
-        
+
         # Check function name
         if "stub" in item.name.lower():
             print(f"  STUB NAME: {item.name}")
             is_stub = True
-        
+
         # Read the raw source code to check for comments
         import inspect
         try:
@@ -114,18 +114,14 @@ def pytest_collection_modifyitems(config, items):
                 is_stub = True
         except Exception as e:
             print(f"  Error checking source: {e}")
-        
-        # Special override for our test run - don't exclude the tests we want to run
-        if "test_file_match_in_analyze_test_stubs" in item.name or "test_test_stubs_module_path_mapping" in item.name:
-            is_stub = False
-            
+
         # Add non-stub tests to the list
         if not is_stub:
             print(f"  INCLUDE: {item.name}")
             selected_items.append(item)
         else:
             print(f"  EXCLUDE: {item.name}")
-    
+
     # Replace the test items with our filtered list
     print(f"Original count: {len(items)}, Filtered count: {len(selected_items)}")
     items[:] = selected_items
