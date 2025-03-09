@@ -19,6 +19,9 @@ class ApiSource(str, Enum):
     
     CONGRESS = "congress"
     GOVINFO = "govinfo"
+    INTERNAL = "internal"
+    NETWORK = "network"
+    CLIENT = "client"
 
 
 class AuthType(str, Enum):

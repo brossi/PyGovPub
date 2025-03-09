@@ -35,11 +35,13 @@ def setup_test_paths():
 project_root, src_dir = setup_test_paths()
 
 # Log path information for debugging
-print(f"PyGovPub test environment setup:")
-print(f"- Project root: {project_root}")
-print(f"- Source directory: {src_dir}")
-print(f"- sys.path[0:3]: {sys.path[0:3]}")
-print(f"- PYTHONPATH: {os.environ.get('PYTHONPATH')}")
+# Use ANSI color codes - teal (cyan) for PyGovPub setup
+# The \033[36m code sets the color to cyan (teal)
+print(f"\033[36mPyGovPub test environment setup:")
+print(f"\033[36m- Project root: {project_root}")
+print(f"\033[36m- Source directory: {src_dir}")
+print(f"\033[36m- sys.path[0:3]: {sys.path[0:3]}")
+print(f"\033[36m- PYTHONPATH: {os.environ.get('PYTHONPATH')}\033[0m")
 
 # Update pip to avoid warnings (but only if not running in CI environment)
 if not os.environ.get('CI'):
