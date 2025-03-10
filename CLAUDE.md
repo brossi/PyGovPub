@@ -112,6 +112,38 @@ PyGovPub is a Python SDK that provides unified access to U.S. Federal Government
 - **Update Timestamps**: `utilities/update_timestamp.sh <markdown_file>` (updates "Last Updated" field in markdown files to current UTC time)
   - Note: Process one file at a time; for multiple files, run separate commands
   - Optional section ID: `utilities/update_timestamp.sh <markdown_file> <section_id>`
+- **Health Check**:
+  - Run basic health check: `pygovpub-health check`
+  - Generate JSON report: `pygovpub-health check --format json` or `pygovpub-health check --json`
+  - Generate Markdown report: `pygovpub-health check --format markdown`
+  - Save report to file: `pygovpub-health check --output health_report.txt`
+  - Show detailed information: `pygovpub-health check --verbose`
+  - Install psutil for enhanced diagnostics: `pip install "pygovpub[health]"`
+  
+  The health check tool validates the following components:
+  - **API Connectivity**: Tests connections to Congress.gov and GovInfo.gov APIs
+  - **Authentication**: Validates API keys and authentication methods
+  - **Rate Limits**: Checks current rate limit status for each API
+  - **Configuration**: Verifies environment variables and configuration settings
+  - **System Information**: Reports Python version, OS details, and dependency versions
+  - **Performance**: Measures API response times and local resource usage
+  
+  Health status reports can be:
+  - **healthy**: All systems operational
+  - **degraded**: Some APIs have rate limits or minor issues
+  - **unhealthy**: Configuration problems or API connectivity issues
+  - **critical**: Multiple services unavailable
+- **Mock Server**:
+  - Start mock server: `pygovpub-mock`
+  - Custom port: `pygovpub-mock --port 9000`
+  - Custom host: `pygovpub-mock --host 0.0.0.0`
+  - Simulate latency: `pygovpub-mock --latency 200`
+  - Simulate rate limits: `pygovpub-mock --rate-limits`
+  - Recording mode: `pygovpub-mock --record`
+- **Schema Monitoring**:
+  - List known schemas: `pygovpub-schema list-schemas`
+  - View recent changes: `pygovpub-schema list-changes`
+  - View supported API versions: `pygovpub-schema list-versions`
 - **Coverage Analysis**:
   - Basic usage: `./utilities/projected_coverage.py` (analyzes all stubs)
   - Analyze specific package: `./utilities/projected_coverage.py --package pygovpub.auth`
@@ -311,11 +343,11 @@ Do not use the phrase: "I found the issue." or variants of the same meaning.
 Development MUST follow the phase sequence defined in `00-phase.md`:
 1. Local Development Environment [DX-003] ✅ COMPLETED
 2. API Authentication Management [AUTH-001] ✅ COMPLETED
-3. Error Handling [CORE-002] ⏩ NEXT
-4. Unified Data Response Format [CORE-001]
-5. Development Logging and Debugging [DX-004]
-6. SDK Health Check and Validation [DX-001]
-7. Command Line Interface [DX-002]
+3. Error Handling [CORE-002] ✅ COMPLETED
+4. Unified Data Response Format [CORE-001] ✅ COMPLETED
+5. Development Logging and Debugging [DX-004] ✅ COMPLETED
+6. SDK Health Check and Validation [DX-001] ✅ COMPLETED
+7. Command Line Interface [DX-002] ⏩ NEXT
 8. Public Service Achievement Validation
 9. CI/CD Pipeline Implementation
 
@@ -495,5 +527,18 @@ def evaluate_solution(proposed: Solution) -> bool:
 ```
 
 This balance between simplicity and completeness must be maintained across all phases. Each implementation decision should be validated against these principles to ensure we build exactly what is needed - no more, no less.
+
+## Final Testing Requirement
+
+IMPORTANT: Always run both tests and coverage reports at the end of each response when code changes are made:
+```bash
+# Run tests
+pytest
+
+# Generate coverage report
+./utilities/projected_coverage.py --all-packages --verbose
+```
+
+These commands must be executed after any code modification to ensure continuous quality monitoring and prevent regression issues.
 
 [Claude.Anthropic.3.5.Sonnet-20240308-a966fcba-f74b-452c-a3a6-9dc2d3b75de1__1741398986]
