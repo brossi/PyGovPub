@@ -112,7 +112,7 @@ class Vote(BaseTable, table=True):
     # Relationships
     members: List["Member"] = Relationship(
         back_populates="votes",
-        link_model="MemberVote"
+        sa_relationship_kwargs={"secondary": "member_votes"}
     )
     """Members who participated in this vote."""
     
