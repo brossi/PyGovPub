@@ -1,521 +1,118 @@
-# PyGovPub Development Guide
+# PyGovPub Documentation - Token-Efficient Format
 
-"There is also the other side of the coin minted by Einstein: 'Everything should be as simple as it can be, but not simpler' – a scientist's defense of art and knowledge – of lightness, completeness and accuracy."
+> “There is also the other side of the coin minted by Einstein: ‘Everything should be as simple as it can be, but not simpler’ – a scientist’s defense of art and knowledge – of lightness, completeness and accuracy.”
+>
+> — Louis Zukofsky, *Poetry in a Modern Age*, June 1950, p. 180.
 
-1950 June, Poetry, Reviews section, Poetry in a Modern Age by Louis Zukofsky, (Review of the volume "William Carlos Williams" by Vivienne Koch (The Makers of Modern Literature Series)), Page 180, Volume 76, Number 3, Modern Poetry Association. (Google Books snippet view. Verified on paper) [link](http://books.google.com/books?id=GQEKAAAAIAAJ&q=minted#search_anchor)
+## Compression Legend
 
-## Project Overview
+```
+PO=Project Overview|CO=Core Objectives|UC=Use Cases|TU=Target Users|AO=Architecture Overview
+CS=Component Structure|EA=External APIs|DD=Design Decisions|CMD=Commands|TS=Test Structure
+TSTUB=Test Stubs|SG=Style Guidelines|PR=Planning Resources|DP=Development Process
+AIR=API Integration Requirements|DA=Development Approach|TR=Testing Requirements
+IP=Implementation Philosophy|CI=Commit Instructions|FTR=Final Testing Requirements
 
-PyGovPub is a Python SDK that provides unified access to U.S. Federal Government data through integration with Congress.gov and GovInfo.gov APIs. The SDK aims to simplify access to legislative and regulatory data while ensuring document authenticity and maintaining compliance with API rate limits.
-
-### Core Objectives
-- **Intelligent Integration**: Deduplicate overlapping data sources while preserving authoritative origins (e.g., Congress.gov for real-time status, GovInfo.gov for authenticated documents)
-- **Data Normalization**: Provide consistent, reliable schemas that normalize disparate data models from multiple government sources
-- **Trust Building**: Ensure data authenticity through digital signature verification, authoritative source tracking, and comprehensive audit trails
-- **Smart Routing**: Automatically direct requests to optimal data sources based on freshness, authenticity needs, and rate limit availability
-- **Unified Access**: Abstract away the complexity of multiple government APIs behind a cohesive, well-documented interface
-- **Data Quality**: Implement cross-validation between sources to ensure accuracy and completeness of government data
-- **Resilient Updates**: Enable real-time legislative updates with guaranteed delivery and conflict resolution
-
-### Key Use Cases
-- **Legislative Tracking**: Monitor bills, amendments, and committee activities
-- **Document Retrieval**: Access authenticated government documents with version tracking
-- **Member Information**: Access current and historical data about Congressional members, including roles, committee assignments, and legislative activities
-- **Regulatory Monitoring**: Track Federal Register publications and CFR updates
-- **Real-time Updates**: Receive notifications of legislative and regulatory changes as soon as they are published by official sources
-- **Data Integration**: Combine data from multiple government sources with consistent schemas
-
-### Target Users
-- Government Affairs Software Developers
-- Legislative Tracking Applications
-- Regulatory Compliance Systems
-- Legal Research Platforms
-- Public Policy Research Organizations
-
-## Architecture Overview
-
-### Component Structure
-1. **Core SDK Layer**
-   - API client management
-   - Authentication handling
-   - Rate limit monitoring
-   - Document verification
-
-2. **Data Integration Layer**
-   - Schema normalization
-   - Cross-reference resolution
-   - Version tracking
-   - Change detection
-
-3. **Real-time Updates Layer**
-   - Webhook management
-   - Event filtering
-   - Delivery monitoring
-   - Retry handling
-
-### External API Integration
-
-#### Congress.gov API
-- **Rate Limit**: 5,000 requests/hour
-- **Authentication**: API key in header
-- **Primary Uses**:
-  - Legislative data
-  - Committee information
-  - Member activities
-  - Real-time updates
-
-#### GovInfo.gov API
-- **Rate Limit**: 1,000 requests/hour
-- **Authentication**: API key in parameters
-- **Primary Uses**:
-  - Document retrieval
-  - Digital signatures
-  - Bulk data access
-  - Publication metadata
-
-### Design Decisions & Constraints
-
-1. **Authentication**
-   - All requests must be authenticated
-   - API keys stored in environment variables
-   - Automatic rate limit management
-
-2. **Data Consistency**
-   - Congress.gov is primary source for real-time status
-   - GovInfo.gov is primary source for documents
-   - Conflicts resolved using timestamp-based precedence
-
-3. **Performance**
-   - Aggressive caching of document content
-   - Lazy loading of related data
-   - Background processing for updates
-   - Rate limit pooling across requests
-
-4. **Reliability**
-   - Automatic retries with exponential backoff
-   - Circuit breakers for API failures
-   - Persistent queue for webhook delivery
-   - Transaction-based data updates
-
-## Commands
-- **Environment Setup**:
-  - Activate the virtual environment: `source venv/bin/activate`
-  - Install in development mode: `pip install -e .`
-- **Run Tests**:
-  - All tests: `pytest`
-  - Specific test: `pytest tests/unit/pygovpub/auth/test_models.py::test_function_name`
-  - With coverage: `pytest --cov=pygovpub tests/unit/`
-  - Full test suite with detailed output: `./test_refactor.sh --package pygovpub --test-path tests/unit/ --detailed`
-- **Linting**: `flake8` or `ruff check .`
-- **Type Checking**: `mypy .`
-- **Format Code**: `black .`
-- **Update Timestamps**: `utilities/update_timestamp.sh <markdown_file>` (updates "Last Updated" field in markdown files to current UTC time)
-  - Note: Process one file at a time; for multiple files, run separate commands
-  - Optional section ID: `utilities/update_timestamp.sh <markdown_file> <section_id>`
-- **Health Check**:
-  - Run basic health check: `pygovpub-health check`
-  - Generate JSON report: `pygovpub-health check --format json` or `pygovpub-health check --json`
-  - Generate Markdown report: `pygovpub-health check --format markdown`
-  - Save report to file: `pygovpub-health check --output health_report.txt`
-  - Show detailed information: `pygovpub-health check --verbose`
-  - Install psutil for enhanced diagnostics: `pip install "pygovpub[health]"`
-
-  The health check tool validates the following components:
-  - **API Connectivity**: Tests connections to Congress.gov and GovInfo.gov APIs
-  - **Authentication**: Validates API keys and authentication methods
-  - **Rate Limits**: Checks current rate limit status for each API
-  - **Configuration**: Verifies environment variables and configuration settings
-  - **System Information**: Reports Python version, OS details, and dependency versions
-  - **Performance**: Measures API response times and local resource usage
-
-  Health status reports can be:
-  - **healthy**: All systems operational
-  - **degraded**: Some APIs have rate limits or minor issues
-  - **unhealthy**: Configuration problems or API connectivity issues
-  - **critical**: Multiple services unavailable
-- **Mock Server**:
-  - Start mock server: `pygovpub-mock`
-  - Custom port: `pygovpub-mock --port 9000`
-  - Custom host: `pygovpub-mock --host 0.0.0.0`
-  - Simulate latency: `pygovpub-mock --latency 200`
-  - Simulate rate limits: `pygovpub-mock --rate-limits`
-  - Recording mode: `pygovpub-mock --record`
-- **Schema Monitoring**:
-  - List known schemas: `pygovpub-schema list-schemas`
-  - View recent changes: `pygovpub-schema list-changes`
-  - View supported API versions: `pygovpub-schema list-versions`
-- **Coverage Analysis**:
-  - Basic usage: `./utilities/projected_coverage.py` (analyzes all stubs)
-  - Analyze specific package: `./utilities/projected_coverage.py --package pygovpub.auth`
-  - View latest coverage report: `./utilities/projected_coverage.py --report`
-  - Check coverage history: `./utilities/projected_coverage.py --history`
-  - Analyze all packages: `./utilities/projected_coverage.py --all-packages`
-  - Detailed verbose output: `./utilities/projected_coverage.py --verbose`
-- **Source Analysis and Refactoring**:
-  - Run source analysis: `python -m utilities.source_analyzer --path <path_to_file_or_directory>`
-  - Run refactoring analysis: `./test_refactor.sh --package <package_name> --test-path <test_path>`
-  - Run standalone refactoring analysis: `python -m utilities.refactor_analyzer --path <path_to_file_or_directory>`
-  - Run with intelligent timeout: `./test_refactor.sh --package <package_name> --timeout 0`
-
-IMPORTANT: Always use the Python 3.13 virtual environment in `venv/` for all development. This ensures consistent dependencies and package versions across all development environments.
-
-## Test Directory Structure
-
-All tests MUST follow these organization rules:
-
-1. **Location**: All tests must reside in the `/tests/` directory at project root
-   - Unit tests: `/tests/unit/pygovpub/...`
-   - Integration tests: `/tests/integration/...`
-   - Do NOT place tests in `/src/tests/` or create nested test directories
-
-2. **Structure**: Tests must mirror the package structure
-   - For module `src/pygovpub/auth/models.py`
-   - Test at `tests/unit/pygovpub/auth/test_models.py`
-
-3. **Imports**: Use package imports ONLY
-   - Correct: `from pygovpub.auth.models import ApiCredential`
-   - Incorrect: `import sys; sys.path.insert(0, 'src')`
-
-4. **Configuration**: All path resolution happens through conftest.py
-   - Do NOT manually modify sys.path in test files
-   - Use pytest fixtures for test dependencies
-
-## Test Stubs and Coverage Projection
-
-The project uses test stubs to plan coverage and document testing requirements before implementation.
-
-### Creating Test Stubs
-
-Test stubs are automatically excluded from test runs using these patterns:
-
-1. **Function name contains "stub"**:
-   ```python
-   def test_stub_api_validation():
-       """This stub tests API validation logic."""
-       assert True
-   ```
-
-2. **Function contains a STUB comment**:
-   ```python
-   def test_auth_flow():
-       # STUB: This tests lines 45-60 in auth_manager.py
-       """Tests authentication flow."""
-       assert True
-   ```
-
-3. **Function contains a WIP comment**:
-   ```python
-   def test_complex_scenario():
-       # WIP: Will implement when feature is complete
-       """Tests a complex scenario."""
-       assert False  # Would fail if run, but won't be run
-   ```
-
-### Coverage Projection
-
-Use the `projected_coverage.py` tool to predict coverage after stub implementation and track coverage history:
-
-```bash
-# Basic usage - analyzes auth package and all stubs
-./utilities/projected_coverage.py
-
-# Custom analysis
-./utilities/projected_coverage.py --package pygovpub.core --stub-dir tests/unit/core
-
-# View latest coverage report
-./utilities/projected_coverage.py --report
-
-# View coverage history
-./utilities/projected_coverage.py --history
+pkg=package|API=application programming interface|auth=authentication|docs=documentation|impl=implementation
+cfg=configuration|req=required|env=environment|mgmt=management|func=function|dir=directory
+SDK=software development kit|TDD=test-driven development|DB=database|CLI=command-line interface
+RT=real-time|FR=Federal Register|CFR=Code of Federal Regulations|QA=quality assurance
+CRUD=create/read/update/delete|CI/CD=continuous integration/continuous deployment
 ```
 
-The tool automatically stores coverage results in `.coverage_history.json` for quick reference. This history file maintains records of test coverage over time, including:
-- Overall coverage percentage
-- Module-specific coverage statistics
-- Uncovered line numbers
-- Timestamp of each test run
+## Token-Efficient Documentation
 
-This feature allows for tracking coverage progress without re-running tests, which is especially useful for:
-- Checking current test coverage status
-- Comparing coverage between different modules
-- Identifying persistent uncovered lines
-- Documenting coverage improvements over time
+```
+PO|Python_SDK=unified_access_to_US_Gov_data|Congress.gov+GovInfo.gov=sources|ensure_doc_auth+API_rate_limits
 
-### Test Stub Best Practices
+CO|Intelligent_Integration=dedupe_overlap+preserve_auth_src|Data_Normalization=consistent_schemas|Trust_Building=sig_verify+audit
+CO|Smart_Routing=optimal_src_by_need|Unified_Access=cohesive_interface|Data_Quality=cross_validate|Resilient_Updates=guaranteed
 
-1. Document which lines of code the stub will test using `# STUB: This tests lines X-Y`
-2. Create stubs alongside implementation to ensure complete coverage
-3. Add detailed docstrings explaining what will be tested
-4. Keep stubs in sync with code changes
-5. See `docs/test_stubs.md` for complete documentation
+UC|Legislative_Tracking=bills+amendments+committee|Document_Retrieval=auth_docs+versions|Member_Info=roles+assignments
+UC|Regulatory_Monitoring=FR+CFR|RT_Updates=notifications|Data_Integration=multi_src+schemas
 
-## Style Guidelines
-- **Imports**: Group imports: stdlib, third-party, local. Sort alphabetically within groups.
-- **Formatting**: Follow PEP 8 with 88-character line limit (Black default).
-- **Type Hints**: Use type annotations for all function parameters and return values.
-- **Naming**: Use snake_case for variables/functions, PascalCase for classes, UPPER_CASE for constants.
-- **Documentation**: All public APIs must have docstrings following Google style.
-- **Error Handling**: Use specific exceptions, prefer context managers, handle API rate limits gracefully.
-- **Testing**: Write unit tests for all functions, mock external API calls.
+TU|Gov_Affairs_Devs|Legislative_Track_Apps|Regulatory_Compliance|Legal_Research|Policy_Research
 
-This project follows FastAPI, Pydantic, and SQLModel conventions where applicable.
+AO|CS|Core_SDK_Layer=API_client+auth+rate_limit+verify|Data_Integration=schema_norm+xref+version+changes|RT_Updates=webhook+filter+monitor+retry
 
-## Planning Resources
+EA|Congress.gov=5K_req/hr+API_key_header+leg_data+RT_updates|GovInfo.gov=1K_req/hr+API_key_params+docs+sigs+bulk
 
-The `planning/` directory contains specification documents that should be consulted during development. These resources define the project requirements, architecture, and implementation guidelines.
+DD|Auth=all_req_auth+env_vars+auto_rate|Data_Consistency=Congress=status+GovInfo=docs+timestamp_conflict|Performance=cache+lazy_load+bkg_proc+pool_req|Reliability=retry+circuit_break+queue+txn
 
-### Core Documentation
-- `planning/README.md` - Project overview, architecture diagrams, and feature requirements
-- `planning/functional-overview.md` - SDK functional requirements and boundaries
-- `planning/fastapi-router-structure.md` - API structure specification
-- `planning/database-schema.md` - Database schema specification
-- `planning/checklist-guide.md` - Development process and quality guidelines
-- `planning/bill-version-codes.md` - Comprehensive guide to legislative bill version codes
-- `planning/dev-learnings.md` - Documented challenges and solutions from implementation
-- `planning/phronesis.md` - Knowledge repository of implementation experience
-- `planning/phronesis-llm.md` - LLM-optimized format of development insights
+CMD|Env_Setup=source_venv/bin/activate+pip_install_-e_.|Run_Tests=pytest+pytest_path::fn+pytest_--cov+test_refactor.sh
+CMD|Lint=flake8,ruff|Type=mypy|Format=black|Update_TS=update_timestamp.sh_file_[section]
+CMD|Health=pygovpub-health_check+--format+--output+--verbose|Mock=pygovpub-mock+--port+--host+--latency+--rate-limits+--record
+CMD|Schema=list-schemas+list-changes+list-versions|Coverage=projected_coverage.py+--pkg+--report+--history+--all-pkgs+--verbose
+CMD|Source=source_analyzer+refactor_analyzer+test_refactor.sh|REQ=venv_Python_3.13
 
-### Implementation Phases
-The `planning/actions/` directory contains phase-specific implementation guides:
-- `stage-01/1-00-phase.md` - Implementation Sequence by Necessity
-- `stage-01/1-00-config001.md` - Configuration Management
-- `stage-01/1-01-data001.md` - Core Data Model Implementation
-- `stage-01/1-02-db001.md` - Essential Database Integration
-- `stage-01/1-03-api001.md` - API Integration - Congress.gov
-- `stage-01/1-04-api002.md` - API Integration - GovInfo.gov
-- `stage-01/1-05-cache001.md` - Essential API Caching
-- `stage-01/1-05-core003.md` - Basic Router Implementation
-- `stage-01/1-06-ops001.md` - Basic Operational Infrastructure
-- `stage-01/1-06-sync001.md` - Data Synchronization
-- `stage-01/1-07-real001.md` - Real-time Update System
-- `stage-01/1-08-api003.md` - FastAPI Router Implementation
-- `stage-01/1-09-search001.md` - Basic Search Implementation
-- `stage-01/1-10-valid001.md` - Public Service Achievement Validation
-- `stage-01/1-11-test001.md` - API Contract Testing Framework
+TS|tests/unit/pygovpub/|mirror_pkg|no_src/tests|imports=from_pygovpub.X_import_Y|no_sys.path|conftest.py=path_resolver
 
-Additional enhancement phases after achieving API parity:
-- `stage-01/1-15-data002.md` - Advanced Data Model Enhancements
-- `stage-01/1-16-db002.md` - Advanced Database Enhancements
-- `stage-01/1-17-ops002.md` - Advanced Operational Infrastructure
-- `stage-01/1-18-cache002.md` - Advanced Caching Infrastructure
-- `stage-01/1-19-core004.md` - Advanced Router Implementation
-- `stage-01/1-20-test002.md` - Advanced Testing Infrastructure
+TSTUB|pattern=test_stub_X+#_STUB+#_WIP|projected_coverage.py=coverage_projection+history_tracking|store=.coverage_history.json
+TSTUB|benefits=check_status+compare_modules+find_uncovered+doc_improvements
 
-### Standards & Conventions
-The `planning/standards/` directory defines project standards:
-- `naming-conventions.md` - Naming standards for code and documentation
-- `api-documentation.md` - OpenAPI documentation requirements
-- `version-compatibility.md` - Version tracking and compatibility standards
+SG|imports=stdlib+third-party+local|format=PEP8+88_chars|types=annotations|naming=snake_case+PascalCase+UPPER_CASE
+SG|docs=Google_style|errors=specific_exceptions+context_mgrs+rate_limits|testing=unit_tests+mock_APIs|follows=FastAPI+Pydantic+SQLModel
 
-### API Specifications
-The `planning/endpoints/` directory contains detailed specifications for each API area:
-- `authentication/` - Authentication requirements and workflows
-- `documents/` - Document handling specifications
-- `legislative/` - Legislative data API specifications
-- `regulatory/` - Regulatory content API specifications
-- `updates/` - Real-time update system specifications
+PR|planning/=specs+req+arch+impl_guides|Core_Docs=README+functional-overview+router-structure+db-schema+checklist+bill-codes+dev-learnings+phronesis
+PR|Phases=actions/stage-01/1-*|Standards=standards/|API_Specs=endpoints/|External_API_Docs=dev-references/|QA=qa/|Tools=utilities/
 
-### External API Documentation
-The `planning/dev-references/` directory contains essential API documentation:
-- `congress_gov-api-documentation.md` - Official Congress.gov API documentation
-  - Authentication requirements
-  - Endpoint specifications
-  - Rate limits and quotas
-  - Data models and schemas
-  - Real-time update mechanisms
+DP|Phases=1.CONFIG→14.VALID|Checklists=update_as_completed|Task_Verify=pytest+projected_coverage+source_analyzer+test_refactor
+DP|Sessions=initial_test_run|Quality_Gates=tests_pass+coverage+integration+no_warnings+types+docs+hash+suite
+DP|Test_Maint=update_mocks+match_formats+fix_immediately
 
-- `govInfo-api-docs-and-samples.txt` - Official GovInfo.gov API documentation
-  - Authentication methods
-  - Package ID formats
-  - Bulk data access
-  - Digital signatures
-  - Version tracking
+AIR|Congress.gov=5K_req/hr+header_key+congress_docs+version_compat|GovInfo.gov=1K_req/hr+param_key+govInfo_docs+USLM
 
-- `bill-status-implementation-guide.md` - Bill status tracking implementation
-- `library-implementation-guide.md` - SDK implementation patterns
-- `uslm-implementation-guide.md` - United States Legislative Markup guide
+DA|1.specs+2.workflows+3.schema+4.API_req+5.checklist|TR=qa/dir+README+TDD+projected_coverage+report+history+100%_critical
 
-### Quality Assurance
-The `planning/qa/` directory contains:
-- `unit-test-manifest.md` - Unit testing requirements and coverage standards
-- `integration-test-manifest.md` - Integration testing specifications
-- `logging-strategy.md` - Logging standards and implementation
-- `openapi_validation.py` - API documentation validation tools
+IP|Einstein_razor=MIN_COMPLEXITY=necessary+essential|validate=core_obj+simpler+guarantees|MIN=optimal_simplicity
 
-### Development Tools
-- `utilities/` - Development and maintenance scripts
-  - `update_timestamp.sh` - Updates markdown file timestamps
-  - `projected_coverage.py` - Analyzes test coverage, tracks history, and projects future coverage with stubs
-  - Additional development utilities
+CI|NO:Claude_attribution|conventional_commit_format|NEVER_add_Claude_signatures_to_commits|NO_Claude_co-authoring_tokens
 
-## Development Process
+FTR|ALL_CODE_CHANGES=pytest+projected_coverage.py_--all-packages_--verbose
+```
 
-Do not use the phrase: "I found the issue." or variants of the same meaning.
+## Expanded Content for Key Sections
 
-### Phase Sequencing
-Development MUST follow the phase sequence defined in `00-phase.md`:
-1. Local Development Environment [DX-003] ✅ COMPLETED
-2. API Authentication Management [AUTH-001] ✅ COMPLETED
-3. Error Handling [CORE-002] ✅ COMPLETED
-4. Unified Data Response Format [CORE-001] ✅ COMPLETED
-5. Development Logging and Debugging [DX-004] ✅ COMPLETED
-6. SDK Health Check and Validation [DX-001] ✅ COMPLETED
-7. Command Line Interface [DX-002] ⏩ NEXT
-8. Public Service Achievement Validation
-9. CI/CD Pipeline Implementation
+### Project Overview (PO)
+PyGovPub is a Python SDK providing unified access to U.S. Federal Government data through Congress.gov and GovInfo.gov APIs. It simplifies access to legislative and regulatory data while ensuring document authenticity and maintaining compliance with API rate limits.
 
-### Checklist Management
-IMPORTANT: When implementing a phase, update the checklist in the corresponding action file (e.g., `planning/actions/02-auth001.md` for AUTH-001) AS YOU COMPLETE EACH TASK. Do not wait until the end to mark all items complete at once. So is it generated: [Claude.Anthropic.3.7.Sonnet-20250219-UpdatedInstructions-2025-03-08-04:01-UTC]
+### Core Objectives (CO)
+- **Intelligent Integration**: Deduplicate overlapping data sources while preserving authoritative origins
+- **Data Normalization**: Provide consistent schemas normalizing disparate data models
+- **Trust Building**: Ensure data authenticity through signature verification and audit trails
+- **Smart Routing**: Direct requests to optimal sources based on needs and limits
+- **Unified Access**: Cohesive interface to multiple government APIs
+- **Data Quality**: Cross-validation between sources for accuracy
+- **Resilient Updates**: Guaranteed delivery of legislative updates with conflict resolution
 
-#### Task Completion Verification Requirements
-CRITICAL FOR ALL AI AGENTS: Before marking ANY task as complete [x] in the phase checklists, you MUST:
+### Implementation Phases (PR)
+The `planning/actions/stage-01/` directory contains implementation guides:
+- `1-00-phase.md` - Implementation Sequence by Necessity
+- `1-00-config001.md` - Configuration Management
+- `1-01-data001.md` - Core Data Model Implementation
+- `1-02-db001.md` - Essential Database Integration
+- `1-03-api001.md` - API Integration - Congress.gov
+- `1-04-api002.md` - API Integration - GovInfo.gov
+- `1-05-cache001.md` - Essential API Caching
+- `1-05-core003.md` - Basic Router Implementation <- !DEV IS HERE!- >
+- `1-06-ops001.md` - Basic Operational Infrastructure
+- `1-06-sync001.md` - Data Synchronization
+- `1-07-real001.md` - Real-time Update System
+- `1-08-api003.md` - FastAPI Router Implementation
+- `1-09-search001.md` - Basic Search Implementation
+- `1-10-valid001.md` - Public Service Achievement Validation
+- `1-11-test001.md` - API Contract Testing Framework
 
-1. Run the full test suite: `pytest`
-2. Run projected coverage analysis: `./utilities/projected_coverage.py --all-packages --verbose`
-3. Run source analysis on the relevant package: `python -m utilities.source_analyzer --path <package_path>`
-4. Run refactoring analysis: `./test_refactor.sh --package <package_name> --test-path <test_path>`
-5. Verify ALL tests pass without errors or warnings
-6. If any tests fail:
-   - Fix all errors related to your implementation
-   - Document any pre-existing errors that cannot be fixed in the current phase
-   - Explain your reasoning for leaving any errors unfixed
+Enhancement phases after API parity:
+- `1-15-data002.md` - Advanced Data Model Enhancements
+- `1-16-db002.md` - Advanced Database Enhancements
+- `1-17-ops002.md` - Advanced Operational Infrastructure
+- `1-18-cache002.md` - Advanced Caching Infrastructure
+- `1-19-core004.md` - Advanced Router Implementation
+- `1-20-test002.md` - Advanced Testing Infrastructure
 
-DO NOT mark tasks as complete until you have verified through comprehensive testing that your implementation works correctly and integrates properly with the existing codebase. This verification step is non-negotiable and essential for maintaining code quality.
-
-Each completed task should:
-1. Be marked with [x] immediately after implementation AND verification
-2. Have its corresponding test implemented and passing
-3. Include any necessary documentation updates
-4. Follow the style guidelines and code quality standards
-5. Have passed all required test suites and analysis tools
-
-### Full Test Suite Execution
-The full test suite MUST be run before considering any task complete. This includes:
-
-1. **Unit Tests**: Verify individual components work as expected
-   ```bash
-   pytest tests/unit/
-   ```
-
-2. **Integration Tests**: Verify components work together correctly
-   ```bash
-   pytest tests/integration/
-   ```
-
-3. **Coverage Analysis**: Ensure adequate test coverage
-   ```bash
-   pytest --cov=pygovpub tests/
-   ./utilities/projected_coverage.py --all-packages --verbose
-   ```
-
-4. **Source Analysis**: Check code quality and complexity
-   ```bash
-   python -m utilities.source_analyzer --path src/pygovpub/
-   ```
-
-5. **Refactoring Analysis**: Identify potential improvements
-   ```bash
-   ./test_refactor.sh --package pygovpub --test-path tests/unit/ --detailed
-   ```
-
-6. **Combined Test and Analysis**: Run all tests and analysis in one command
-   ```bash
-   ./test_refactor.sh --package pygovpub --test-path tests/unit/ --detailed
-   ```
-
-### Session Initialization Requirement
-MANDATORY FOR ALL AI AGENTS: At the beginning of EVERY new session, you MUST:
-
-1. Run the full test suite to establish the current state of the codebase:
-   ```bash
-   ./test_refactor.sh --package pygovpub --test-path tests/unit/ --detailed
-   ```
-
-2. Review the test results to understand:
-   - Current passing/failing tests
-   - Code coverage status
-   - Identified code quality issues
-   - Refactoring opportunities
-
-3. Summarize the test results for the user, highlighting:
-   - Overall test pass/fail status
-   - Coverage percentage
-   - Critical issues that need attention
-   - Stubs that need implementation
-
-This initialization process is required before engaging in any development tasks to ensure you have an accurate understanding of the current codebase state.
-
-### Quality Gates
-Each phase must pass the quality gates defined in `08-completion.md`:
-1. All tests pass with zero warnings/exceptions
-2. 100% code coverage on critical paths
-3. All integration tests pass in isolation
-4. No deprecation warnings
-5. Static type checking passes
-6. Documentation complete
-7. Commit hash recorded
-8. Full test suite execution completed with all analyses
-
-### Test Maintenance Best Practices
-When adding new features or command-line options, remember to update all test mocks:
-
-1. **Update all test mocks**: When adding a new parameter to any function or CLI, add it to all mock objects
-   - Example: After adding `--all-packages` to a CLI tool, add `all_packages = False` to all mock argument objects
-   - This applies even to tests not directly testing the new functionality
-
-2. **Match exact output formats**: When mocking output formats (like reports), include all section markers and formatting
-   - Example: Include section markers like `---------- coverage:` and respect exact spacing/indentation
-   - Use real command output as reference for creating test mock data
-
-3. **Fix failing tests immediately**: Don't let failing tests linger
-   - Postponed fixes can mask real problems
-   - Fixed tests increase confidence when making further changes
-   - Always run related tests after fixing a specific test
-
-These practices prevent the "broken windows effect" in your test suite - small failures that lead to bigger problems over time [Claude.Anthropic.3.7.Sonnet-20250308-TestMaintenancePractices]
-
-### API Integration Requirements
-When working with external APIs:
-1. Congress.gov API
-   - Rate Limit: 5,000 requests/hour
-   - Authentication: API key in header
-   - Documentation: `dev-references/congress_gov-api-documentation.md`
-   - Version Compatibility: `standards/version-compatibility.md`
-
-2. GovInfo.gov API
-   - Rate Limit: 1,000 requests/hour (bulk downloads exempt)
-   - Authentication: API key in parameters
-   - Documentation: `dev-references/govInfo-api-docs-and-samples.txt`
-   - Package IDs: Follow USLM guidelines
-
-## Development Approach
-
-When implementing features, follow this process:
-
-1. **Consult Specifications**: Review relevant documentation in the `planning/` directory
-2. **Follow Workflows**: Implement according to the workflow diagrams in `*/workflows.md` files
-3. **Adhere to Schema**: Follow database schema in `database-schema.md`
-4. **Meet API Requirements**: Implement endpoints as specified in `fastapi-router-structure.md`
-5. **Follow Checklist Process**: Use development checklist from `checklist-guide.md`
-
-## Testing Requirements
-
-Implement tests according to the test requirements specified in:
-- `planning/qa/` directory
-- Test coverage requirements in `planning/README.md`
-
-All code should be developed test-first following the process in `checklist-guide.md`.
-
-For coverage verification:
-1. Run `./utilities/projected_coverage.py` after implementing new tests
-2. Check the `--report` command to verify current coverage metrics
-3. Use the coverage history to track improvements over time
-4. Aim for 100% coverage on critical paths as mandated by quality gates
-5. Document any intentionally uncovered lines with justification
-
-## Implementation Philosophy
-
-DIRECTIVE[CORE]: When evaluating implementation choices, apply Einstein's razor:
+### Implementation Philosophy (IP)
+When evaluating implementation choices, apply Einstein's razor:
 1. MIN_COMPLEXITY = necessary_components + essential_interactions
 2. MAX_COMPLEXITY = MIN_COMPLEXITY
 3. IF proposed_solution.complexity > MAX_COMPLEXITY:
@@ -523,45 +120,16 @@ DIRECTIVE[CORE]: When evaluating implementation choices, apply Einstein's razor:
    - ELSE IF complexity < MIN_COMPLEXITY:
    - ADD missing_essential_components
 
-VALIDATE[EACH_DECISION]:
+Validate each decision:
 - Does this component serve core objectives?
 - Can it be simpler without losing function?
 - Would simplification break essential guarantees?
 
-PATTERN[IMPLEMENTATION]:
-```python
-def evaluate_solution(proposed: Solution) -> bool:
-    essential_components = get_minimum_required(proposed.objective)
-    if len(proposed.components) > len(essential_components):
-        return False  # Over-engineered
-    if not all(required in proposed.components for required in essential_components):
-        return False  # Under-engineered
-    return True  # Optimal simplicity
-```
-
-This balance between simplicity and completeness must be maintained across all phases. Each implementation decision should be validated against these principles to ensure we build exactly what is needed - no more, no less.
-
-## Commit Instructions
-
-IMPORTANT: Do not include the following text in Git commits:
-```
-🤖 Generated with [Claude Code](https://claude.ai/code)
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
-
-Commits should follow the conventional commit format without any additional attribution.
-
-## Final Testing Requirement
-
-IMPORTANT: Always run both tests and coverage reports at the end of each response when code changes are made:
-```bash
-# Run tests
-pytest
-
-# Generate coverage report
-./utilities/projected_coverage.py --all-packages --verbose
-```
-
-These commands must be executed after any code modification to ensure continuous quality monitoring and prevent regression issues.
-
-[Claude.Anthropic.3.5.Sonnet-20240308-a966fcba-f74b-452c-a3a6-9dc2d3b75de1__1741398986]
+### Commit Instructions (CI)
+When making commits to this repository:
+- Follow conventional commit format (type: description)
+- NEVER add Claude attribution to commits
+- DO NOT include "Generated with Claude Code" lines
+- DO NOT add "Co-Authored-By: Claude" lines
+- Keep commit messages clean and professional
+- Focus on describing the changes clearly and concisely
