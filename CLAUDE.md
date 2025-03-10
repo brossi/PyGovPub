@@ -528,6 +528,16 @@ def evaluate_solution(proposed: Solution) -> bool:
 
 This balance between simplicity and completeness must be maintained across all phases. Each implementation decision should be validated against these principles to ensure we build exactly what is needed - no more, no less.
 
+## Commit Instructions
+
+IMPORTANT: Do not include the following text in Git commits:
+```
+🤖 Generated with [Claude Code](https://claude.ai/code)
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+Commits should follow the conventional commit format without any additional attribution.
+
 ## Final Testing Requirement
 
 IMPORTANT: Always run both tests and coverage reports at the end of each response when code changes are made:
