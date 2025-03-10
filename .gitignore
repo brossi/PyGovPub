@@ -169,3 +169,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# In-memory SQLite database files created during testing
+:memory:*
+
+# Environment files
+.env*
