@@ -41,6 +41,7 @@ dependencies = [
 ]
 
 [project.scripts]
+pygovpub = "pygovpub.cli.main:main"
 pygovpub-mock = "pygovpub.cli.mock_server:start_mock_server_cli"
 pygovpub-health = "pygovpub.cli.health:main"
 pygovpub-schema = "pygovpub.cli.schema_monitor:main"
@@ -85,3 +86,31 @@ select = ["E", "F", "I"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=pygovpub --cov-report=term-missing"
+
+[tool.coverage.run]
+branch = true
+source = ["pygovpub"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+]
+
+[tool.interrogate]
+ignore-init-method = true
+ignore-init-module = true
+ignore-magic = true
+ignore-semiprivate = true
+ignore-private = true
+ignore-property-decorators = true
+ignore-module = true
+fail-under = 90
+exclude = ["tests", "docs", "build"]

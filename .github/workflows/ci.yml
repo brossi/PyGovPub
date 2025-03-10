@@ -1,0 +1,107 @@
+name: PyGovPub CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [ published ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.13"]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_USER: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Required for some checks
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,test,health]"
+        pip install pytest-cov coverage build twine radon xenon interrogate safety bandit pip-audit
+
+    - name: Unit Tests
+      run: |
+        pytest tests/unit --cov=pygovpub --cov-fail-under=90 --cov-report=xml
+        coverage report --fail-under=90
+      env:
+        CONGRESS_API_KEY: ${{ secrets.TEST_CONGRESS_API_KEY || 'test_congress_key' }}
+        GOVINFO_API_KEY: ${{ secrets.TEST_GOVINFO_API_KEY || 'test_govinfo_key' }}
+
+    - name: Integration Tests
+      run: |
+        pytest tests/integration --cov=pygovpub --cov-append
+      env:
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5432
+        POSTGRES_USER: test
+        POSTGRES_PASSWORD: test
+        POSTGRES_DB: test
+        CONGRESS_API_KEY: ${{ secrets.TEST_CONGRESS_API_KEY || 'test_congress_key' }}
+        GOVINFO_API_KEY: ${{ secrets.TEST_GOVINFO_API_KEY || 'test_govinfo_key' }}
+
+    - name: Code Quality
+      run: |
+        mypy src/pygovpub
+        black --check .
+        ruff check .
+        radon cc src/pygovpub --min C
+        xenon --max-absolute B --max-modules B --max-average A src/pygovpub
+
+    - name: Linting
+      run: |
+        ruff src/pygovpub
+        black --check src/pygovpub
+
+    - name: Security
+      run: |
+        safety check
+        bandit -r src/pygovpub -ll
+        pip-audit
+
+    - name: Build
+      run: |
+        python -m build
+        twine check dist/*
+
+    - name: Upload Coverage
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: true
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: Deploy
+      if: github.event_name == 'release'
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+      run: |
+        twine upload dist/*

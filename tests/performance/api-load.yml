@@ -1,0 +1,38 @@
+config:
+  target: "http://localhost:8000"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 20
+  defaults:
+    headers:
+      X-API-Key: "test_api_key"
+
+scenarios:
+  - name: "API Operations"
+    flow:
+      - get:
+          url: "/api/v1/bills/search"
+          expect:
+            - statusCode: 200
+            - maxResponseTime: 200
+      - get:
+          url: "/api/v1/bills/HR1234-117"
+          expect:
+            - statusCode: 200
+            - maxResponseTime: 150
+      - get:
+          url: "/api/v1/documents/BILLS-117hr1234ih/verify"
+          expect:
+            - statusCode: 200
+            - maxResponseTime: 300
+      - get:
+          url: "/api/v1/members/S000148"
+          expect:
+            - statusCode: 200
+            - maxResponseTime: 200
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+            - maxResponseTime: 100
