@@ -16,6 +16,7 @@ class ApiUsage(BaseTable, table=True):
     """API usage tracking."""
     
     __tablename__ = "api_usage"
+    __table_args__ = {"extend_existing": True}
     
     usage_id: Optional[int] = Field(default=None, primary_key=True)
     """Unique identifier for the usage record."""
@@ -50,6 +51,7 @@ class SyncStatus(BaseTable, table=True):
     """Synchronization status tracking."""
     
     __tablename__ = "sync_status"
+    __table_args__ = {"extend_existing": True}
     
     sync_id: Optional[int] = Field(default=None, primary_key=True)
     """Unique identifier for the sync status record."""
@@ -80,6 +82,7 @@ class SyncError(BaseTable, table=True):
     """Synchronization error tracking."""
     
     __tablename__ = "sync_errors"
+    __table_args__ = {"extend_existing": True}
     
     error_id: Optional[int] = Field(default=None, primary_key=True)
     """Unique identifier for the error record."""
@@ -118,6 +121,7 @@ class SchemaVersion(BaseTable, table=True):
     """Schema version tracking."""
     
     __tablename__ = "schema_versions"
+    __table_args__ = {"extend_existing": True}
     
     version_id: Optional[int] = Field(default=None, primary_key=True)
     """Unique identifier for the version record."""

@@ -35,6 +35,7 @@ class ApiConfiguration(SQLModel, table=True):
     """API configuration and authentication settings."""
     
     __tablename__ = "api_configurations"
+    __table_args__ = {"extend_existing": True}
     
     id: Optional[int] = Field(default=None, primary_key=True)
     source: ApiSource = Field(index=True)
@@ -56,6 +57,7 @@ class ApiUsage(SQLModel, table=True):
     """API usage and rate limit tracking."""
     
     __tablename__ = "api_usage"
+    __table_args__ = {"extend_existing": True}
     
     id: Optional[int] = Field(default=None, primary_key=True)
     source: ApiSource = Field(index=True)

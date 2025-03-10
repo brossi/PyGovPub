@@ -324,28 +324,32 @@ def test_db_auth_config():
     """Test getting auth config from database."""
     # This tests lines 223-231
 
-    # Create a mock session that will return a predefined result
+    # Use MagicMock instead of actual models to avoid SQLModel issues
+    mock_db_config = mock.MagicMock()
+    mock_db_config.source = ApiSource.CONGRESS.value
+    mock_db_config.auth_type = AuthType.HEADER.value
+    mock_db_config.auth_key_name = "X-API-Key"
+    mock_db_config.base_url = "https://mock-api.congress.gov"
+    mock_db_config.active = True
+    
+    # Create a mock session that will return our predefined result
     mock_session = mock.MagicMock()
     mock_result = mock.MagicMock()
-    mock_result.first.return_value = ApiConfiguration(
-        source=ApiSource.CONGRESS,
-        auth_type=AuthType.HEADER,
-        auth_key_name="X-API-Key",
-        base_url="https://mock-api.congress.gov",
-        active=True
-    )
+    mock_result.first.return_value = mock_db_config
     mock_session.exec.return_value = mock_result
+    
+    # Support context manager protocol
     mock_session.__enter__.return_value = mock_session
+    mock_session.__exit__.return_value = None
 
     # Create a session factory that returns our mock
     def mock_session_factory():
         return mock_session
 
-    # Create an auth manager with our session factory
-    manager = AuthManager(session_factory=mock_session_factory)
-
-    # Bypass the default config fallback by patching sqlmodel.select
+    # Create an auth manager with our session factory and patch sqlmodel.select
     with patch('sqlmodel.select', return_value=mock.MagicMock()):
+        manager = AuthManager(session_factory=mock_session_factory)
+        
         # Get auth config - this should trigger the DB query path
         config = manager._get_auth_config(ApiSource.CONGRESS)
 

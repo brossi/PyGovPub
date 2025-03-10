@@ -9,6 +9,11 @@ import pytest
 from datetime import datetime, timezone
 from sqlmodel import Field, SQLModel, Session, create_engine
 from typing import Optional
+import uuid
+
+# Clear SQLModel metadata to avoid conflicts with other tests
+from sqlmodel.main import SQLModel as BaseSQLModel
+BaseSQLModel.metadata.clear()
 
 from pygovpub.models.base import BaseTable, BaseEntity
 
@@ -19,6 +24,7 @@ def test_base_table_creation():
     # Create a test model inheriting from BaseTable
     class TestModel(BaseTable, table=True):
         __tablename__ = "test_models"
+        __table_args__ = {"extend_existing": True}
         
         id: Optional[int] = Field(default=None, primary_key=True)
         name: str = Field(index=True)
@@ -49,13 +55,15 @@ def test_base_table_with_sqlalchemy():
     # Create a test model inheriting from BaseTable with primary key
     class TestModelWithSQLAlchemy(BaseTable, table=True):
         __tablename__ = "test_models_sqlalchemy"
+        __table_args__ = {"extend_existing": True}
         
         id: Optional[int] = Field(default=None, primary_key=True)
         name: str = Field(index=True)
         description: Optional[str] = None
     
-    # Create an in-memory SQLite engine
-    engine = create_engine("sqlite:///:memory:")
+    # Create an in-memory SQLite engine with a unique URL to avoid conflicts
+    unique_db_url = f"sqlite:///:memory:{uuid.uuid4()}"
+    engine = create_engine(unique_db_url)
     
     # Create tables
     SQLModel.metadata.create_all(engine)
@@ -86,12 +94,14 @@ def test_base_table_updated_at():
     # Create a test model inheriting from BaseTable with primary key
     class TestModelUpdatedAt(BaseTable, table=True):
         __tablename__ = "test_models_updated_at"
+        __table_args__ = {"extend_existing": True}
         
         id: Optional[int] = Field(default=None, primary_key=True)
         name: str
     
-    # Create an in-memory SQLite engine
-    engine = create_engine("sqlite:///:memory:")
+    # Create an in-memory SQLite engine with a unique URL to avoid conflicts
+    unique_db_url = f"sqlite:///:memory:{uuid.uuid4()}"
+    engine = create_engine(unique_db_url)
     
     # Create tables
     SQLModel.metadata.create_all(engine)
