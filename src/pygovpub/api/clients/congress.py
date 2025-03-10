@@ -13,6 +13,11 @@ import logging
 from pygovpub.api.base import BaseApiClient
 from pygovpub.auth.auth_manager import AuthManager
 from pygovpub.auth.models import ApiSource
+from pygovpub.events.event_manager import get_event_manager
+from pygovpub.events.event_types import (
+    Event, EventCategory, EventType, EventPayload,
+    FloorUpdatePayload, VoteUpdatePayload, CalendarUpdatePayload, HearingUpdatePayload
+)
 from pygovpub.exceptions import ApiError, CongressApiError
 from pygovpub.models.legislative import (
     Bill, BillAction, BillSponsor, BillSummary, BillType, BillVersion,
@@ -33,6 +38,7 @@ class CongressClient(BaseApiClient):
             auth_manager: Authentication manager instance
         """
         super().__init__(auth_manager, ApiSource.CONGRESS)
+        self._event_manager = get_event_manager()
     
     # Bill endpoints
     
@@ -764,6 +770,251 @@ class CongressClient(BaseApiClient):
             "pagination": pagination
         }
     
+    # Real-time update endpoints
+    
+    async def get_floor_updates(self, chamber: str, date_str: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get floor updates for a specific chamber.
+        
+        Args:
+            chamber: Chamber (house, senate)
+            date_str: Optional date in YYYY-MM-DD format (defaults to today)
+            
+        Returns:
+            List of floor updates
+            
+        Raises:
+            ApiError: If request fails
+        """
+        params = {}
+        if date_str:
+            params["date"] = date_str
+            
+        endpoint = f"/floor/{chamber}"
+        response = await self.execute_request(endpoint=endpoint, params=params)
+        
+        # Validate response
+        if not self.validate_response(response, ["results"]):
+            raise CongressApiError("Invalid floor updates response format", status_code=400, endpoint=endpoint)
+            
+        updates = response.get("results", [])
+        
+        # Emit events for each update
+        await self._emit_floor_update_events(chamber, updates)
+        
+        return updates
+    
+    async def get_vote_updates(self, chamber: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get recent vote updates.
+        
+        Args:
+            chamber: Optional chamber (house, senate) to filter by
+            
+        Returns:
+            List of vote updates
+            
+        Raises:
+            ApiError: If request fails
+        """
+        params = {}
+        endpoint = "/votes"
+        
+        if chamber:
+            endpoint = f"/votes/{chamber}"
+            
+        response = await self.execute_request(endpoint=endpoint, params=params)
+        
+        # Validate response
+        if not self.validate_response(response, ["results"]):
+            raise CongressApiError("Invalid vote updates response format", status_code=400, endpoint=endpoint)
+            
+        votes = response.get("results", [])
+        
+        # Emit events for each vote
+        await self._emit_vote_update_events(votes)
+        
+        return votes
+    
+    async def get_calendar_updates(self, chamber: str) -> List[Dict[str, Any]]:
+        """Get calendar updates for a specific chamber.
+        
+        Args:
+            chamber: Chamber (house, senate)
+            
+        Returns:
+            List of calendar updates
+            
+        Raises:
+            ApiError: If request fails
+        """
+        endpoint = f"/calendar/{chamber}"
+        response = await self.execute_request(endpoint=endpoint)
+        
+        # Validate response
+        if not self.validate_response(response, ["results"]):
+            raise CongressApiError("Invalid calendar updates response format", status_code=400, endpoint=endpoint)
+            
+        calendar_items = response.get("results", [])
+        
+        # Emit events for each calendar item
+        await self._emit_calendar_update_events(chamber, calendar_items)
+        
+        return calendar_items
+    
+    async def get_hearing_updates(self, committee_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get hearing updates.
+        
+        Args:
+            committee_id: Optional committee ID to filter by
+            
+        Returns:
+            List of hearing updates
+            
+        Raises:
+            ApiError: If request fails
+        """
+        params = {}
+        endpoint = "/hearings"
+        
+        if committee_id:
+            params["committee"] = committee_id
+            
+        response = await self.execute_request(endpoint=endpoint, params=params)
+        
+        # Validate response
+        if not self.validate_response(response, ["results"]):
+            raise CongressApiError("Invalid hearing updates response format", status_code=400, endpoint=endpoint)
+            
+        hearings = response.get("results", [])
+        
+        # Emit events for each hearing
+        await self._emit_hearing_update_events(hearings)
+        
+        return hearings
+    
+    # Event emission methods
+    
+    async def _emit_floor_update_events(self, chamber: str, updates: List[Dict[str, Any]]) -> None:
+        """Emit events for floor updates.
+        
+        Args:
+            chamber: Chamber (house, senate)
+            updates: List of floor updates
+        """
+        for update in updates:
+            # Create payload
+            payload = FloorUpdatePayload(
+                event_time=self._parse_datetime(update.get("timestamp")),
+                source=self.api_source,
+                source_id=f"floor/{chamber}/{update.get('id', '')}",
+                source_url=update.get("url", ""),
+                resource_type="floor_update",
+                chamber=chamber,
+                action_time=self._parse_datetime(update.get("timestamp")),
+                description=update.get("text", ""),
+                data=update
+            )
+            
+            # Emit event
+            await self._event_manager.create_and_emit_event(
+                event_type=EventType.FLOOR_PROCEEDINGS_UPDATE,
+                payload=payload
+            )
+    
+    async def _emit_vote_update_events(self, votes: List[Dict[str, Any]]) -> None:
+        """Emit events for vote updates.
+        
+        Args:
+            votes: List of vote updates
+        """
+        for vote in votes:
+            # Create payload
+            chamber = vote.get("chamber", "")
+            vote_id = vote.get("voteNumber", "")
+            congress = vote.get("congress", "")
+            
+            payload = VoteUpdatePayload(
+                event_time=self._parse_datetime(vote.get("date")),
+                source=self.api_source,
+                source_id=f"vote/{congress}/{chamber}/{vote_id}",
+                source_url=vote.get("url", ""),
+                resource_type="vote",
+                vote_id=vote_id,
+                chamber=chamber,
+                vote_time=self._parse_datetime(vote.get("date")),
+                question=vote.get("question", ""),
+                description=vote.get("title", ""),
+                result=vote.get("result", ""),
+                data=vote
+            )
+            
+            # Emit event
+            await self._event_manager.create_and_emit_event(
+                event_type=EventType.VOTE_COMPLETED,
+                payload=payload
+            )
+    
+    async def _emit_calendar_update_events(self, chamber: str, calendar_items: List[Dict[str, Any]]) -> None:
+        """Emit events for calendar updates.
+        
+        Args:
+            chamber: Chamber (house, senate)
+            calendar_items: List of calendar items
+        """
+        for item in calendar_items:
+            # Create payload
+            item_id = item.get("id", "")
+            
+            payload = CalendarUpdatePayload(
+                event_time=datetime.utcnow(),
+                source=self.api_source,
+                source_id=f"calendar/{chamber}/{item_id}",
+                source_url=item.get("url", ""),
+                resource_type="calendar_item",
+                chamber=chamber,
+                calendar_id=item_id,
+                scheduled_time=self._parse_datetime(item.get("scheduledAt")),
+                description=item.get("description", ""),
+                data=item
+            )
+            
+            # Emit event
+            await self._event_manager.create_and_emit_event(
+                event_type=EventType.CALENDAR_ITEM_ADDED,
+                payload=payload
+            )
+    
+    async def _emit_hearing_update_events(self, hearings: List[Dict[str, Any]]) -> None:
+        """Emit events for hearing updates.
+        
+        Args:
+            hearings: List of hearing updates
+        """
+        for hearing in hearings:
+            # Create payload
+            committee_id = hearing.get("committee", {}).get("systemCode", "")
+            hearing_id = hearing.get("id", "")
+            
+            payload = HearingUpdatePayload(
+                event_time=datetime.utcnow(),
+                source=self.api_source,
+                source_id=f"hearing/{committee_id}/{hearing_id}",
+                source_url=hearing.get("url", ""),
+                resource_type="hearing",
+                committee_id=committee_id,
+                hearing_id=hearing_id,
+                title=hearing.get("title", ""),
+                scheduled_time=self._parse_datetime(hearing.get("scheduledAt")),
+                location=hearing.get("location", ""),
+                description=hearing.get("description", ""),
+                data=hearing
+            )
+            
+            # Emit event
+            await self._event_manager.create_and_emit_event(
+                event_type=EventType.HEARING_SCHEDULED,
+                payload=payload
+            )
+    
     # Utility methods
     
     def _parse_date(self, date_str: Optional[str]) -> Optional[date]:
@@ -785,6 +1036,26 @@ class CongressClient(BaseApiClient):
         except (ValueError, TypeError):
             logger.warning(f"Failed to parse date: {date_str}")
             return None
+    
+    def _parse_datetime(self, datetime_str: Optional[str]) -> Optional[datetime]:
+        """Parse datetime string to datetime object.
+        
+        Args:
+            datetime_str: Datetime string in ISO format
+            
+        Returns:
+            Datetime object or None if parsing fails
+        """
+        if not datetime_str:
+            return datetime.utcnow()
+            
+        try:
+            if "T" in datetime_str:
+                return datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
+            return datetime.combine(date.fromisoformat(datetime_str), datetime.min.time())
+        except (ValueError, TypeError):
+            logger.warning(f"Failed to parse datetime: {datetime_str}")
+            return datetime.utcnow()
     
     def _parse_chamber(self, chamber_str: Optional[str]) -> Optional[Chamber]:
         """Parse chamber string to Chamber enum.
