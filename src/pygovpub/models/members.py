@@ -72,7 +72,7 @@ class Role(BaseTable, table=True):
     """When the role ended (if applicable)."""
     
     # Relationships
-    member: "Member" = Relationship(back_populates="roles")
+    member: "Member" = Relationship()
     """Member in this role."""
 
 
@@ -110,13 +110,13 @@ class Vote(BaseTable, table=True):
     """Result of the vote (passed, failed, etc.)."""
     
     # Relationships
-    members: List["Member"] = Relationship(
-        back_populates="votes",
-        sa_relationship_kwargs={"secondary": "member_votes"}
-    )
+    # Disable these relationships as they're causing issues with SQLModel configuration
+    # members: List["Member"] = Relationship(
+    #     sa_relationship_kwargs={"secondary": "member_votes"}
+    # )
     """Members who participated in this vote."""
     
-    member_votes: List["MemberVote"] = Relationship(back_populates="vote")
+    member_votes: List["MemberVote"] = Relationship()
     """Individual vote positions."""
 
 
@@ -139,8 +139,8 @@ class MemberVote(BaseTable, table=True):
     """When the vote was cast."""
     
     # Relationships
-    vote: "Vote" = Relationship(back_populates="member_votes")
+    vote: "Vote" = Relationship()
     """Vote being cast."""
     
-    member: "Member" = Relationship(back_populates="member_votes")
+    member: "Member" = Relationship() 
     """Member casting the vote."""

@@ -119,7 +119,7 @@ PyGovPub is a Python SDK that provides unified access to U.S. Federal Government
   - Save report to file: `pygovpub-health check --output health_report.txt`
   - Show detailed information: `pygovpub-health check --verbose`
   - Install psutil for enhanced diagnostics: `pip install "pygovpub[health]"`
-  
+
   The health check tool validates the following components:
   - **API Connectivity**: Tests connections to Congress.gov and GovInfo.gov APIs
   - **Authentication**: Validates API keys and authentication methods
@@ -127,7 +127,7 @@ PyGovPub is a Python SDK that provides unified access to U.S. Federal Government
   - **Configuration**: Verifies environment variables and configuration settings
   - **System Information**: Reports Python version, OS details, and dependency versions
   - **Performance**: Measures API response times and local resource usage
-  
+
   Health status reports can be:
   - **healthy**: All systems operational
   - **degraded**: Some APIs have rate limits or minor issues
@@ -277,16 +277,29 @@ The `planning/` directory contains specification documents that should be consul
 
 ### Implementation Phases
 The `planning/actions/` directory contains phase-specific implementation guides:
-- `00-phase.md` - Phase sequencing and dependencies
-- `01-dx003.md` - Local Development Environment
-- `02-auth001.md` - API Authentication Management
-- `03-core002.md` - Error Handling
-- `04-core001.md` - Unified Data Response Format
-- `05-dx004.md` - Development Logging and Debugging
-- `06-dx001.md` - SDK Health Check and Validation
-- `07-dx002.md` - Command Line Interface
-- `08-completion.md` - Public Service Achievement Validation
-- `09-cicd.md` - CI/CD Pipeline Implementation
+- `stage-01/1-00-phase.md` - Implementation Sequence by Necessity
+- `stage-01/1-00-config001.md` - Configuration Management
+- `stage-01/1-01-data001.md` - Core Data Model Implementation
+- `stage-01/1-02-db001.md` - Essential Database Integration
+- `stage-01/1-03-api001.md` - API Integration - Congress.gov
+- `stage-01/1-04-api002.md` - API Integration - GovInfo.gov
+- `stage-01/1-05-cache001.md` - Essential API Caching
+- `stage-01/1-05-core003.md` - Basic Router Implementation
+- `stage-01/1-06-ops001.md` - Basic Operational Infrastructure
+- `stage-01/1-06-sync001.md` - Data Synchronization
+- `stage-01/1-07-real001.md` - Real-time Update System
+- `stage-01/1-08-api003.md` - FastAPI Router Implementation
+- `stage-01/1-09-search001.md` - Basic Search Implementation
+- `stage-01/1-10-valid001.md` - Public Service Achievement Validation
+- `stage-01/1-11-test001.md` - API Contract Testing Framework
+
+Additional enhancement phases after achieving API parity:
+- `stage-01/1-15-data002.md` - Advanced Data Model Enhancements
+- `stage-01/1-16-db002.md` - Advanced Database Enhancements
+- `stage-01/1-17-ops002.md` - Advanced Operational Infrastructure
+- `stage-01/1-18-cache002.md` - Advanced Caching Infrastructure
+- `stage-01/1-19-core004.md` - Advanced Router Implementation
+- `stage-01/1-20-test002.md` - Advanced Testing Infrastructure
 
 ### Standards & Conventions
 The `planning/standards/` directory defines project standards:

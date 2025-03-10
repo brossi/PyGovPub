@@ -164,3 +164,101 @@ config.save_to_file()
 - Encryption uses machine-specific information to derive the encryption key
 - Environment variables are not encrypted, so ensure they are properly secured
 - The configuration system supports rotating API keys with easy update methods
+
+## Database Configuration
+
+PyGovPub supports multiple database backends, with PostgreSQL being the primary recommended database for production use. SQLite is supported for local development and testing.
+
+### Database Environment Variables
+
+Database connection is configured using the following environment variables:
+
+| Variable       | Description                          | Default Value         |
+|----------------|--------------------------------------|-----------------------|
+| `DB_TYPE`      | Database type (postgresql, sqlite)   | sqlite                |
+| `DB_HOST`      | Database host                        | :memory: (for SQLite) |
+| `DB_PORT`      | Database port                        | (database default)    |
+| `DB_NAME`      | Database name                        | pygovpub              |
+| `DB_USER`      | Database username                    | (empty)               |
+| `DB_PASSWORD`  | Database password                    | (empty)               |
+
+### PostgreSQL Configuration
+
+For production use, PostgreSQL is recommended. Set up PostgreSQL as follows:
+
+1. Install PostgreSQL on your system or use a cloud-hosted PostgreSQL instance.
+
+2. Create a database and user for PyGovPub:
+
+```sql
+CREATE DATABASE pygovpub;
+CREATE USER pygovpub_user WITH PASSWORD 'your_secure_password';
+GRANT ALL PRIVILEGES ON DATABASE pygovpub TO pygovpub_user;
+```
+
+3. Configure environment variables:
+
+```bash
+export DB_TYPE=postgresql
+export DB_HOST=localhost
+export DB_PORT=5432  # Default PostgreSQL port
+export DB_NAME=pygovpub
+export DB_USER=pygovpub_user
+export DB_PASSWORD=your_secure_password
+```
+
+4. Initialize the database tables:
+
+```python
+from pygovpub.core.database import create_tables
+create_tables()
+```
+
+### SQLite Configuration (Development)
+
+For local development, SQLite is a convenient option:
+
+1. Configure environment variables:
+
+```bash
+export DB_TYPE=sqlite
+export DB_HOST=/path/to/your/database.db  # Or :memory: for in-memory database
+```
+
+2. Initialize the database tables as shown above.
+
+## Testing with PostgreSQL
+
+To run tests with PostgreSQL:
+
+1. Set up a test PostgreSQL database:
+
+```sql
+CREATE DATABASE pygovpub_test;
+CREATE USER pygovpub_test WITH PASSWORD 'test_password';
+GRANT ALL PRIVILEGES ON DATABASE pygovpub_test TO pygovpub_test;
+```
+
+2. Configure environment variables for testing:
+
+```bash
+export DB_TYPE=postgresql
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_NAME=pygovpub_test
+export DB_USER=pygovpub_test
+export DB_PASSWORD=test_password
+```
+
+3. Run tests:
+
+```bash
+pytest tests/unit/pygovpub/core/test_postgres.py
+```
+
+To skip PostgreSQL tests when PostgreSQL is not available:
+
+```bash
+export SKIP_POSTGRES_TESTS=true
+pytest
+```

@@ -127,3 +127,24 @@ def pytest_collection_modifyitems(config, items):
     # Replace the test items with our filtered list
     print(f"Original count: {len(items)}, Filtered count: {len(selected_items)}")
     items[:] = selected_items
+    
+    
+# Filter out known warnings
+@pytest.fixture(autouse=True)
+def filter_warnings():
+    """Filter out known warnings that are expected and can't be fixed."""
+    import warnings
+    
+    # Filter out the SQLite datetime adapter deprecation warning
+    warnings.filterwarnings(
+        "ignore",
+        message="The default datetime adapter is deprecated",
+        category=DeprecationWarning
+    )
+    
+    # Filter out pytest collection warnings for table models
+    warnings.filterwarnings(
+        "ignore",
+        message="cannot collect test class",
+        category=pytest.PytestCollectionWarning
+    )

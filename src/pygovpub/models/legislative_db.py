@@ -264,16 +264,12 @@ class Member(BaseTable, table=True):
     # Committee relationships will be set up in setup_committee_member_relationship
     
     # Role relationship will be set up later
-    # roles: List["Role"] = Relationship(back_populates="member")
+    # Set up in members.py to avoid circular imports
+    roles: List["Role"] = Relationship()
     
-    # Votes relationship will be set up later
-    # votes: List["Vote"] = Relationship(
-    #     back_populates="members",
-    #     sa_relationship_kwargs={"secondary": "member_votes"}
-    # )
-    # 
-    # member_votes: List["MemberVote"] = Relationship(back_populates="member")
-    # """Vote positions for this member."""
+    # votes: List["Vote"] = Relationship()
+    
+    # member_votes: List["MemberVote"] = Relationship()
 
 
 # Import DocumentReference from documents.py to avoid duplication

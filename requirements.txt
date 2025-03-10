@@ -54,3 +54,9 @@ mypy>=1.7.1
 # New dependencies
 networkx>=3.0  # Dependency graph analysis
 libcst>=1.0.0  # AST parsing and code transformations
+greenlet>=3.1.1 # Required for SQLAlchemy async support
+aiosqlite>=0.21.0 # Required for SQLite async support
+
+# Database extras
+psycopg>=3.1.16 # For PostgreSQL support
+mysqlclient>=2.2.1 # For MySQL support
