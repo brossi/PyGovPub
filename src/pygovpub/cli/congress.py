@@ -6,12 +6,16 @@ including bills, members, and committees.
 """
 
 import sys
+import asyncio
 from enum import Enum
 from typing import Dict, List, Optional, Any
 
 import typer
 from rich.console import Console
 
+from pygovpub.api.clients.congress import CongressClient
+from pygovpub.auth.auth_manager import AuthManager
+from pygovpub.exceptions import ApiError, AuthenticationError, RateLimitExceededError
 from pygovpub.cli.output import (
     OutputFormat,
     get_output_format,
@@ -30,19 +34,53 @@ app = typer.Typer(
 # Create console for output
 console = Console()
 
+# Create API client
+auth_manager = AuthManager()
+api_client = CongressClient(auth_manager)
 
-# API client functions (to be implemented when real API client is available)
+
+# API client functions
 def get_bill(bill_id: str, congress: Optional[int] = None, format: Optional[str] = None) -> Dict[str, Any]:
     """Get bill information from Congress.gov API."""
-    # This is a stub function that would be replaced with actual API call
-    return {
-        "congress": congress or 117,
-        "billType": bill_id[:2],
-        "billNumber": bill_id[2:],
-        "title": f"Example Bill {bill_id}",
-        "introducedDate": "2023-01-01",
-        "latestAction": {"text": "Introduced", "date": "2023-01-01"}
-    }
+    try:
+        # Parse bill_id (e.g., "hr1234") into components
+        bill_type = bill_id[:2]
+        bill_number = int(bill_id[2:])
+        
+        # Default to current congress if not specified
+        congress_num = congress or 117
+        
+        # Call API asynchronously
+        bill = asyncio.run(api_client.get_bill(
+            congress=congress_num,
+            bill_type=bill_type,
+            bill_number=bill_number
+        ))
+        
+        # Convert Pydantic model to dict
+        return bill.dict()
+    except (ApiError, AuthenticationError, RateLimitExceededError) as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        return {
+            "error": str(e),
+            "congress": congress or 117,
+            "billType": bill_id[:2],
+            "billNumber": bill_id[2:],
+            "title": f"Example Bill {bill_id} (Error fallback)",
+            "introducedDate": "2023-01-01",
+            "latestAction": {"text": "Introduced", "date": "2023-01-01"}
+        }
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {str(e)}")
+        return {
+            "error": "Unexpected error occurred",
+            "congress": congress or 117,
+            "billType": bill_id[:2],
+            "billNumber": bill_id[2:],
+            "title": f"Example Bill {bill_id} (Error fallback)",
+            "introducedDate": "2023-01-01",
+            "latestAction": {"text": "Introduced", "date": "2023-01-01"}
+        }
 
 
 def search_bills(
@@ -53,37 +91,101 @@ def search_bills(
     format: Optional[str] = None
 ) -> Dict[str, Any]:
     """Search bills in Congress.gov API."""
-    # This is a stub function that would be replaced with actual API call
-    return {
-        "bills": [
-            {"billType": "hr", "billNumber": "1234", "title": f"Example Bill 1 matching '{query}'"},
-            {"billType": "hr", "billNumber": "5678", "title": f"Example Bill 2 matching '{query}'"}
-        ],
-        "pagination": {"count": 2, "next": None}
-    }
+    try:
+        # Call API asynchronously
+        results = asyncio.run(api_client.search_bills(
+            query=query,
+            congress=congress,
+            limit=limit,
+            offset=offset
+        ))
+        
+        # Convert Pydantic models to dicts
+        return {
+            "bills": [bill.dict() for bill in results.get("bills", [])],
+            "pagination": results.get("pagination", {})
+        }
+    except (ApiError, AuthenticationError, RateLimitExceededError) as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        return {
+            "error": str(e),
+            "bills": [
+                {"billType": "hr", "billNumber": "1234", "title": f"Example Bill 1 matching '{query}' (Error fallback)"},
+                {"billType": "hr", "billNumber": "5678", "title": f"Example Bill 2 matching '{query}' (Error fallback)"}
+            ],
+            "pagination": {"count": 2, "next": None}
+        }
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {str(e)}")
+        return {
+            "error": "Unexpected error occurred",
+            "bills": [],
+            "pagination": {"count": 0, "next": None}
+        }
 
 
 def get_member(member_id: str, format: Optional[str] = None) -> Dict[str, Any]:
     """Get member information from Congress.gov API."""
-    # This is a stub function that would be replaced with actual API call
-    return {
-        "bioguideId": member_id,
-        "firstName": "Test",
-        "lastName": "Member",
-        "party": "D",
-        "state": "CA"
-    }
+    try:
+        # Call API asynchronously
+        member = asyncio.run(api_client.get_member(bioguide_id=member_id))
+        
+        # Convert Pydantic model to dict
+        return member.dict()
+    except (ApiError, AuthenticationError, RateLimitExceededError) as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        return {
+            "error": str(e),
+            "bioguideId": member_id,
+            "firstName": "Test",
+            "lastName": "Member",
+            "party": "D",
+            "state": "CA"
+        }
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {str(e)}")
+        return {
+            "error": "Unexpected error occurred",
+            "bioguideId": member_id
+        }
 
 
 def get_committee(committee_id: str, format: Optional[str] = None) -> Dict[str, Any]:
     """Get committee information from Congress.gov API."""
-    # This is a stub function that would be replaced with actual API call
-    return {
-        "committeeId": committee_id,
-        "name": f"Example Committee {committee_id}",
-        "chamber": "House",
-        "subcommittees": []
-    }
+    try:
+        # Parse committee_id to get chamber and code
+        # This is a simplified approach - in reality, the parsing might be more complex
+        if committee_id.startswith("H"):
+            chamber = "house"
+        elif committee_id.startswith("S"):
+            chamber = "senate"
+        else:
+            chamber = "joint"
+            
+        # Call API asynchronously (using current congress by default)
+        committee = asyncio.run(api_client.get_committee(
+            congress=117,  # Default to current congress
+            chamber=chamber,
+            committee_code=committee_id
+        ))
+        
+        # Convert Pydantic model to dict
+        return committee.dict()
+    except (ApiError, AuthenticationError, RateLimitExceededError) as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        return {
+            "error": str(e),
+            "committeeId": committee_id,
+            "name": f"Example Committee {committee_id} (Error fallback)",
+            "chamber": "House",
+            "subcommittees": []
+        }
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {str(e)}")
+        return {
+            "error": "Unexpected error occurred",
+            "committeeId": committee_id
+        }
 
 
 # Bill subcommands
