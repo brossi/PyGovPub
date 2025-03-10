@@ -44,10 +44,13 @@ For language model consumers, a structured JSON format of these learnings is ava
 **Solution:** Standardized on timezone-aware datetimes with `ZoneInfo("UTC")` throughout the codebase.
 
 **Key Learnings:**
-- Replace all instances of `datetime.utcnow()` with `datetime.now(ZoneInfo("UTC"))`
-- When creating datetime objects for testing, always include timezone: `datetime(2023, 1, 1, tzinfo=ZoneInfo("UTC"))`
+- Replace all instances of `datetime.utcnow()` with `datetime.now(UTC)` using the built-in UTC constant
+  - Import correctly with: `from datetime import datetime, UTC`
+  - NEVER use `datetime.utcnow()` as it is deprecated (warning: `datetime.datetime.utcnow() is deprecated and scheduled for removal`)
+- When creating datetime objects for testing, always include timezone: `datetime(2023, 1, 1, tzinfo=UTC)`
 - When comparing datetimes, ensure both are either naive or timezone-aware (preferably the latter)
-- Import ZoneInfo with: `from zoneinfo import ZoneInfo`
+- In older code, you may see ZoneInfo usage: `from zoneinfo import ZoneInfo` and `datetime.now(ZoneInfo("UTC"))`
+- The preferred approach is to use the built-in UTC constant provided in Python 3.11+
 
 #### Deprecated Methods
 
@@ -59,6 +62,11 @@ For language model consumers, a structured JSON format of these learnings is ava
 - Use `mock.Mock(spec=True)` instead of `mock.Mock(spec_set=True)` for stricter mocking
 - Prefer context manager patterns (`with`) over manual resource management
 - Use `Pydantic.model_validate` instead of deprecated validation methods
+- Use Pydantic V2 style validators with proper decorators:
+  - Replace `@validator("field")` with `@field_validator("field", mode="before")`
+  - Always add the `@classmethod` decorator to field validators
+  - Import correctly: `from pydantic import field_validator` (NOT `validator`)
+  - Pydantic V1 style causes warnings: `Pydantic V1 style @validator validators are deprecated`
 
 ### Testing Best Practices
 

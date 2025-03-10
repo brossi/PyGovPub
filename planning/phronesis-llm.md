@@ -35,9 +35,9 @@ Focus solely on encoding the key points and their relationships in the most toke
 ```
 TS|tests/{module}/test_{file}.py|pkg_imports|conftest=path_cfg|NO:sys.path,src/tests,nested|MUST:mirror_pkg_struct
 IR|run_from_root|from pygovpub.X import Y|NO:rel_imports,path_manip
-DT|TZ-aware=req|dt.now(ZI("UTC"))|dt(y,m,d,tz=ZI("UTC"))|naive+aware=err
+DT|TZ-aware=req|dt.now(UTC)|dt(y,m,d,tz=UTC)|naive+aware=err|NO:utcnow|from dt import dt,UTC
 P3.13|m.Mock(spec=T)|ctx_mgr>dec|model_validate>parse|match[T]/assert
-P3.13|importlib.m>pkg_r|field_v>v|@classmethod=req|fk=Literal["x","y"]
+P3.13|importlib.m>pkg_r|field_v>v|@classmethod=req|fk=Literal["x","y"]|v=DEPRECATED|field_v+@classmethod=REQUIRED
 TEST|isolate|indep_fixtures|clean_after|no_globals|req:test_before_impl
 MOCK|mock.server=API|fixtures/X=test_data|recorder=replay|req:predictable_output
 CMD|pytest|pytest path/mod|pytest file::fn|pytest --cov=pkg|LINT:ruff,black,mypy
@@ -52,7 +52,7 @@ COV|proj_cov.py=[BASIC,--pkg=X,--report,--hist,--all-pkgs,--verb]|# STUB: tests 
 TS=Test Structure|IR=Import Resolution|DT=Datetime Handling|P3.13=Python 3.13|TEST=Testing Practice|MOCK=Mock Services|CMD=Commands|ENV=Environment|WF=Workflow|AUTH=Auth Module|CORE=Core Principles|COV=Coverage Strategies
 
 ## Abbrev Legend
-pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipulation|ZI=ZoneInfo|err=error|ctx_mgr=context manager|dec=decorator|indep=independent|rd=read docs|rt=run tests|wt=write tests|impl=implement|simp=simple|opt=optimization|m=mock|pkg_r=pkg_resources|field_v=field_validator|v=validator|fk=Field(discriminator_key)|importlib.m=importlib.metadata|proj_cov=projected_coverage|term-miss=term-missing|req_async=required_for_async_tests|BASIC=basic command|--pkg=package parameter|--hist=history parameter|--all-pkgs=all-packages parameter|--verb=verbose parameter|tracker=coverage history tracker
+pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipulation|ZI=ZoneInfo|err=error|ctx_mgr=context manager|dec=decorator|indep=independent|rd=read docs|rt=run tests|wt=write tests|impl=implement|simp=simple|opt=optimization|m=mock|pkg_r=pkg_resources|field_v=field_validator|v=validator|fk=Field(discriminator_key)|importlib.m=importlib.metadata|proj_cov=projected_coverage|term-miss=term-missing|req_async=required_for_async_tests|BASIC=basic command|--pkg=package parameter|--hist=history parameter|--all-pkgs=all-packages parameter|--verb=verbose parameter|tracker=coverage history tracker|UTC=datetime.UTC constant|NO:utcnow=Never use datetime.utcnow()|DEPRECATED=deprecated method|REQUIRED=required decorator
 
 ## Expanded Knowledge
 
@@ -69,9 +69,11 @@ pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipula
 
 ### Datetime Handling (DT)
 - Always use timezone-aware datetimes with Python 3.13
-- Correct: `datetime.now(ZoneInfo("UTC"))`
-- In tests: `datetime(2023, 1, 1, tzinfo=ZoneInfo("UTC"))`
+- Correct: `datetime.now(UTC)` with `from datetime import datetime, UTC`
+- NEVER use `datetime.utcnow()` (deprecated in Python 3.13)
+- In tests: `datetime(2023, 1, 1, tzinfo=UTC)` using the built-in UTC constant
 - Mixing naive and aware datetimes causes errors
+- Older code may use `ZoneInfo("UTC")` but prefer the built-in UTC constant
 
 ### Python 3.13 Specifics (P3.13)
 - Use `mock.Mock(spec=Type)` for proper type hinting
@@ -81,6 +83,13 @@ pkg=package|cfg=config|req=required|struct=structure|rel=relative|manip=manipula
 - Use `importlib.metadata` instead of deprecated `pkg_resources`
 - Use `@field_validator` instead of deprecated `@validator` in Pydantic
 - Add `@classmethod` decorator to field validators in Pydantic v2
+- The correct pattern is:
+  ```python
+  @field_validator("field_name", mode="before")
+  @classmethod
+  def validate_field(cls, v): ...
+  ```
+- Import correctly: `from pydantic import field_validator` (NOT `validator`)
 - Use `Literal` types for fixed sets of string options
 
 ### Testing Practices (TEST)

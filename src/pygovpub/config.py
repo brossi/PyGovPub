@@ -14,7 +14,7 @@ import json
 import os
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
@@ -24,7 +24,7 @@ import yaml
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # Set up logging
@@ -130,7 +130,8 @@ class ProfileConfig(BaseModel):
     features: Dict[str, bool] = Field(default_factory=dict)
     options: Dict[str, Any] = Field(default_factory=dict)
     
-    @validator("features", pre=True, always=True)
+    @field_validator("features", mode="before")
+    @classmethod
     def set_default_features(cls, v):
         """Set default values for features."""
         defaults = {flag.value: flag.default_value for flag in FeatureFlag}
@@ -551,7 +552,7 @@ class ConfigManager:
             "api_keys": self._api_keys.copy(),
             "api_base_urls": self._api_base_urls.copy(),
             "options": self._options.copy(),
-            "last_updated": datetime.utcnow().isoformat(),
+            "last_updated": datetime.now(UTC).isoformat(),
         }
         
         # Encrypt sensitive sections
