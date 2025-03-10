@@ -30,6 +30,13 @@ Compress the content into one structured string containing only essential abbrev
 
 Focus solely on encoding the key points and their relationships in the most token-efficient manner possible.
 
+## LEARNINGS-002
+
+```
+ASYNC|ctx_mgr_mock|{__aenter__,__aexit__}=req|AsyncMock≠ctx_mgr|class ACMock{def __init__(r),async def __aenter__():r,async def __aexit__():pass}|func-mock=key|with patch(path,ret_asyncctx_mock)
+NULL|API_hdrs=check_null|if not hdrs:ret None|dict.get+try/exc|test:None,{},miss_keys,bad_vals|100%_cov=must
+```
+
 ## LEARNINGS-001
 
 ```
