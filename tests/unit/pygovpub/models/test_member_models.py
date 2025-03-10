@@ -10,7 +10,8 @@ from datetime import date, datetime
 from sqlmodel import Field, SQLModel, Session, create_engine, select
 from typing import Optional, List
 
-from pygovpub.models.members import Member, Role, Vote, CommitteeMember
+from pygovpub.models.legislative_db import Member, CommitteeMember
+from pygovpub.models.members import Role, Vote
 from pygovpub.auth.models import ApiSource
 
 
