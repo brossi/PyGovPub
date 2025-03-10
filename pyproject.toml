@@ -38,6 +38,7 @@ dependencies = [
     "requests>=2.28.2",
     "typer>=0.12.0",
     "rich>=13.9.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.scripts]
@@ -45,6 +46,7 @@ pygovpub = "pygovpub.cli.main:main"
 pygovpub-mock = "pygovpub.cli.mock_server:start_mock_server_cli"
 pygovpub-health = "pygovpub.cli.health:main"
 pygovpub-schema = "pygovpub.cli.schema_monitor:main"
+pygovpub-config = "pygovpub.cli.pygovpub_config:main"
 
 [project.optional-dependencies]
 dev = [
