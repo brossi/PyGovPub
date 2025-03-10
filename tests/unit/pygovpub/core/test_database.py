@@ -35,11 +35,12 @@ from pygovpub.core.database import (
 from pygovpub.models.base import BaseTable, BaseEntity
 
 
-# Define a test model outside of the test class to avoid warning
-class TestModel(BaseTable, table=True):
-    """Test model for database operations."""
+# Define a test model class with a name that isn't prefixed with "Test"
+# to avoid pytest trying to collect it as a test class
+class DBTestModel(BaseTable, table=True):
+    """Model for database testing operations."""
     
-    __tablename__ = "test_models"
+    __tablename__ = "db_test_models"
     __table_args__ = {"extend_existing": True}
     
     test_id: str = Field(primary_key=True)
@@ -141,12 +142,12 @@ def test_get_session(test_db_url):
         
         # Test that the session can be used
         SQLModel.metadata.create_all(engine)
-        model = TestModel(test_id=str(uuid.uuid4()), name="Test")
+        model = DBTestModel(test_id=str(uuid.uuid4()), name="Test")
         session.add(model)
         session.commit()
         
         # Query the model
-        results = session.exec(select(TestModel)).all()
+        results = session.exec(select(DBTestModel)).all()
         assert len(results) == 1
         assert results[0].name == "Test"
 
@@ -160,19 +161,19 @@ def test_with_transaction(test_db_url):
     with patch('pygovpub.core.database.get_engine', return_value=engine):
         # Test successful transaction
         with with_transaction() as session:
-            model = TestModel(test_id=str(uuid.uuid4()), name="Test")
+            model = DBTestModel(test_id=str(uuid.uuid4()), name="Test")
             session.add(model)
         
         # Verify the model was saved
         with Session(engine) as session:
-            results = session.exec(select(TestModel)).all()
+            results = session.exec(select(DBTestModel)).all()
             assert len(results) == 1
             assert results[0].name == "Test"
         
         # Test transaction rollback on exception
         try:
             with with_transaction() as session:
-                model = TestModel(test_id=str(uuid.uuid4()), name="Should Rollback")
+                model = DBTestModel(test_id=str(uuid.uuid4()), name="Should Rollback")
                 session.add(model)
                 raise ValueError("Test exception")
         except ValueError:
@@ -180,7 +181,7 @@ def test_with_transaction(test_db_url):
         
         # Verify no new model was saved
         with Session(engine) as session:
-            results = session.exec(select(TestModel)).all()
+            results = session.exec(select(DBTestModel)).all()
             assert len(results) == 1  # Still just the first one
 
 
@@ -198,12 +199,12 @@ async def test_async_session(test_async_db_url):
             assert isinstance(session, AsyncSession)
             
             # Test that the session can be used
-            model = TestModel(test_id=str(uuid.uuid4()), name="Async Test")
+            model = DBTestModel(test_id=str(uuid.uuid4()), name="Async Test")
             session.add(model)
             await session.commit()
             
             # Query the model
-            result = await session.execute(select(TestModel))
+            result = await session.execute(select(DBTestModel))
             models = result.scalars().all()
             assert len(models) == 1
             assert models[0].name == "Async Test"
@@ -221,12 +222,12 @@ async def test_with_async_transaction(test_async_db_url):
     with patch('pygovpub.core.database.get_async_engine', return_value=engine):
         # Test successful transaction
         async with with_async_transaction() as session:
-            model = TestModel(test_id=str(uuid.uuid4()), name="Async Transaction")
+            model = DBTestModel(test_id=str(uuid.uuid4()), name="Async Transaction")
             session.add(model)
         
         # Verify the model was saved
         async with AsyncSession(engine) as session:
-            result = await session.execute(select(TestModel))
+            result = await session.execute(select(DBTestModel))
             models = result.scalars().all()
             assert len(models) == 1
             assert models[0].name == "Async Transaction"
@@ -234,7 +235,7 @@ async def test_with_async_transaction(test_async_db_url):
         # Test transaction rollback on exception
         try:
             async with with_async_transaction() as session:
-                model = TestModel(test_id=str(uuid.uuid4()), name="Should Rollback")
+                model = DBTestModel(test_id=str(uuid.uuid4()), name="Should Rollback")
                 session.add(model)
                 raise ValueError("Test exception")
         except ValueError:
@@ -242,7 +243,7 @@ async def test_with_async_transaction(test_async_db_url):
         
         # Verify no new model was saved
         async with AsyncSession(engine) as session:
-            result = await session.execute(select(TestModel))
+            result = await session.execute(select(DBTestModel))
             models = result.scalars().all()
             assert len(models) == 1  # Still just the first one
 
@@ -259,14 +260,14 @@ def test_create_tables(test_db_url):
             mock_create_all.assert_called_once_with(engine)
             
     # Now actually create the table to test manually
-    TestModel.__table__.create(engine)
+    DBTestModel.__table__.create(engine)
     
     # Verify tables exist
     inspector = sqlalchemy.inspect(engine)
     tables = inspector.get_table_names()
     
     # Check for tables from our models
-    assert "test_models" in tables
+    assert "db_test_models" in tables
 
 
 def test_drop_tables(test_db_url):
@@ -274,13 +275,13 @@ def test_drop_tables(test_db_url):
     engine = create_engine(test_db_url)
     
     # Create the test table directly
-    TestModel.__table__.create(engine)
+    DBTestModel.__table__.create(engine)
     
     # Verify tables exist before dropping
     inspector = sqlalchemy.inspect(engine)
     tables_before = inspector.get_table_names()
     assert len(tables_before) > 0
-    assert "test_models" in tables_before
+    assert "db_test_models" in tables_before
     
     with patch('pygovpub.core.database.get_engine', return_value=engine):
         # Use patch to mock SQLModel.metadata.drop_all
@@ -290,7 +291,7 @@ def test_drop_tables(test_db_url):
             mock_drop_all.assert_called_once_with(engine)
     
     # Manually drop the table to test
-    TestModel.__table__.drop(engine)
+    DBTestModel.__table__.drop(engine)
     
     # Verify tables are gone
     inspector = sqlalchemy.inspect(engine)
