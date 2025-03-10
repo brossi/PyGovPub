@@ -775,3 +775,149 @@ class MockServerError(PyGovPubException):
     status_code = 500
     error_code = ErrorCode.MOCK_GENERAL
     severity = ErrorSeverity.ERROR
+
+
+# Router Errors
+
+class RouterError(PyGovPubException):
+    """Base class for router-related errors."""
+    
+    status_code = 500
+    error_code = ErrorCode.CLIENT_GENERAL
+    severity = ErrorSeverity.ERROR
+    
+    def __init__(
+        self, 
+        message: str, 
+        request_details: Optional[Dict[str, Any]] = None,
+        **kwargs
+    ):
+        """Initialize router error.
+        
+        Args:
+            message: Error message
+            request_details: Details about the request
+            **kwargs: Additional arguments passed to parent
+        """
+        # Make a copy of kwargs to avoid modifying the original
+        kwargs_copy = kwargs.copy()
+        
+        # Handle details
+        details = kwargs_copy.pop('details', {}) or {}
+        if request_details:
+            details["request_details"] = request_details
+        
+        # Context
+        context = kwargs_copy.pop('context', None) or ErrorContext(
+            source=ApiErrorSource.INTERNAL,
+            request_details=request_details or {}
+        )
+        
+        super().__init__(
+            message, 
+            details=details,
+            context=context,
+            **kwargs_copy
+        )
+
+
+class SourceUnavailableError(RouterError):
+    """API source is not available for routing."""
+    
+    status_code = 503
+    error_code = ErrorCode.RESOURCE_UNAVAILABLE
+    severity = ErrorSeverity.WARNING
+    
+    def __init__(
+        self, 
+        message: str, 
+        source: Optional[str] = None,
+        **kwargs
+    ):
+        """Initialize source unavailable error.
+        
+        Args:
+            message: Error message
+            source: Name of unavailable source
+            **kwargs: Additional arguments passed to parent
+        """
+        # Make a copy of kwargs to avoid modifying the original
+        kwargs_copy = kwargs.copy()
+        
+        # Handle details
+        details = kwargs_copy.pop('details', {}) or {}
+        if source:
+            details["source"] = source
+        
+        # Generate suggestion if not provided
+        if 'suggestion' not in kwargs_copy:
+            suggestion = "Configure the missing API source"
+            if source:
+                suggestion = f"Configure the {source} API source"
+            kwargs_copy['suggestion'] = suggestion
+            
+        # Request details
+        request_details = kwargs_copy.pop('request_details', {}) or {}
+        if source:
+            request_details["required_source"] = source
+        
+        super().__init__(
+            message, 
+            details=details,
+            request_details=request_details,
+            **kwargs_copy
+        )
+
+
+class RouteNotFoundError(RouterError):
+    """No route found for the specified request."""
+    
+    status_code = 404
+    error_code = ErrorCode.RESOURCE_NOT_FOUND
+    severity = ErrorSeverity.WARNING
+    
+    def __init__(
+        self, 
+        message: str, 
+        request_type: Optional[str] = None,
+        method: Optional[str] = None,
+        **kwargs
+    ):
+        """Initialize route not found error.
+        
+        Args:
+            message: Error message
+            request_type: Type of request that failed routing
+            method: Method that was requested
+            **kwargs: Additional arguments passed to parent
+        """
+        # Make a copy of kwargs to avoid modifying the original
+        kwargs_copy = kwargs.copy()
+        
+        # Handle details
+        details = kwargs_copy.pop('details', {}) or {}
+        if request_type:
+            details["request_type"] = request_type
+        if method:
+            details["method"] = method
+        
+        # Generate suggestion if not provided
+        if 'suggestion' not in kwargs_copy:
+            suggestion = "Check request type and method name"
+            if request_type and method:
+                suggestion = f"Check if request type '{request_type}' supports method '{method}'"
+            kwargs_copy['suggestion'] = suggestion
+            
+        # Request details
+        request_details = kwargs_copy.pop('request_details', {}) or {}
+        if request_type:
+            request_details["request_type"] = request_type
+        if method:
+            request_details["method"] = method
+        
+        super().__init__(
+            message, 
+            details=details,
+            request_details=request_details,
+            **kwargs_copy
+        )

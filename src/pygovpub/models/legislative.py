@@ -290,6 +290,60 @@ class Committee(BaseModel):
     # Core identifiers
     committee_id: str = Field(..., description="Committee system code")
     name: str
+    chamber: Chamber
+    congress: int
+    
+    # Committee details
+    jurisdiction: Optional[str] = None
+    website: Optional[HttpUrl] = None
+    
+    # Members
+    chair: Optional[Dict[str, Any]] = None
+    ranking_member: Optional[Dict[str, Any]] = None
+    members: List[Dict[str, Any]] = Field(default_factory=list)
+    subcommittees: List[Dict[str, Any]] = Field(default_factory=list)
+    
+    # Source information
+    source_reference: SourceReference
+
+
+class Amendment(BaseModel):
+    """Legislative amendment to a bill."""
+    
+    # Core identifiers
+    amendment_id: str = Field(..., description="Unique identifier for the amendment")
+    number: str = Field(..., description="Amendment number")
+    congress: int = Field(..., description="Congress number")
+    
+    # Related bill
+    bill_id: Optional[str] = None
+    
+    # Amendment details
+    title: Optional[str] = None
+    description: Optional[str] = None
+    purpose: Optional[str] = None
+    
+    # Dates
+    submitted_date: Optional[date] = None
+    latest_action_date: Optional[date] = None
+    
+    # People and committees
+    sponsor: Optional[BillSponsor] = None
+    cosponsors: List[BillSponsor] = Field(default_factory=list)
+    
+    # Actions
+    actions: List[BillAction] = Field(default_factory=list)
+    
+    # Amendment type and status
+    type: Optional[str] = None
+    status: Optional[str] = None
+    
+    # Source information
+    source_reference: SourceReference
+    
+    # Core identifiers
+    committee_id: str = Field(..., description="Committee system code")
+    name: str
     
     # Organization
     chamber: Chamber
