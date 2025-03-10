@@ -1,0 +1,23 @@
+{
+  "api_source": "internal",
+  "endpoint": "test",
+  "schema": {
+    "$schema": "http://json-schema.org/schema#",
+    "type": "object",
+    "properties": {
+      "test": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "test"
+    ]
+  },
+  "version": {
+    "version_string": "unknown",
+    "schema_hash": "228df50297bc0182",
+    "first_seen": "2025-03-09T22:31:58.434644+00:00",
+    "last_seen": "2025-03-09T22:31:58.434645+00:00",
+    "is_supported": true
+  }
+}

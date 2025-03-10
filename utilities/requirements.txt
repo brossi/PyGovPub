@@ -1,0 +1,28 @@
+# Core Analysis Dependencies
+radon>=4.1.0
+networkx>=3.0
+libcst>=1.0.0
+astroid>=3.0.0
+
+# Testing Dependencies
+pytest>=7.0.0
+coverage>=7.0.0
+pytest-cov>=4.1.0
+
+# Code Quality
+black>=23.0.0
+mypy>=1.8.0
+bandit>=1.7.0
+
+# API & Documentation
+fastapi>=0.110.0
+uvicorn>=0.27.0
+python-multipart>=0.0.9
+pydantic>=2.6.0
+
+# Type Checking
+types-setuptools>=69.0.0
+typing-extensions>=4.0.0
+
+# Security (Future Integration)
+safety>=2.3.0

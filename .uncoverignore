@@ -1,0 +1,60 @@
+# UnCover Ignore File
+# Patterns listed here will be excluded from analysis by the UnCover tool
+
+# Virtual environments
+**/venv/**
+**/.venv/**
+**/env/**
+**/.env/**
+
+# Python package directories
+**/site-packages/**
+**/dist-packages/**
+
+# Build and distribution directories
+**/build/**
+**/dist/**
+**/.tox/**
+**/.eggs/**
+**/*.egg-info/**
+
+# Cache directories
+**/__pycache__/**
+**/.pytest_cache/**
+**/.coverage
+**/.mypy_cache/**
+**/.ruff_cache/**
+
+# Version control
+**/.git/**
+**/.svn/**
+**/.hg/**
+
+# IDE and editor files
+**/.idea/**
+**/.vscode/**
+**/.vs/**
+**/*.swp
+**/*.swo
+**/*~
+
+# Documentation
+**/docs/_build/**
+**/docs/build/**
+
+# Generated files
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.so
+**/*.dll
+**/*.exe
+
+# Logs and databases
+**/*.log
+**/*.sqlite
+**/*.db
+
+# OS specific files
+**/.DS_Store
+**/Thumbs.db
