@@ -110,7 +110,7 @@ class Vote(BaseTable, table=True):
     """Result of the vote (passed, failed, etc.)."""
     
     # Relationships
-    members: List[Member] = Relationship(
+    members: List["Member"] = Relationship(
         back_populates="votes",
         link_model="MemberVote"
     )
