@@ -6,11 +6,149 @@ document references, versions, and authentication.
 """
 
 from datetime import date, datetime
-from typing import List, Optional, TYPE_CHECKING
+from enum import Enum, auto
+from typing import List, Optional, TYPE_CHECKING, Dict, Any, Set
 
+from pydantic import BaseModel
 from sqlmodel import Field, Relationship, SQLModel
 
+from pygovpub.auth.models import ApiSource
 from pygovpub.models.base import BaseTable, BaseEntity
+
+class DocumentType(str, Enum):
+    """Types of documents available from GovInfo."""
+    
+    BILL = "bill"
+    FEDERAL_REGISTER = "federal_register"
+    CONGRESSIONAL_RECORD = "congressional_record"
+    CODE_OF_FEDERAL_REGULATIONS = "cfr"
+    STATUTE = "statute"
+    PUBLIC_LAW = "public_law"
+    CONGRESSIONAL_HEARING = "hearing"
+    CONGRESSIONAL_REPORT = "report"
+    CONGRESSIONAL_DOCUMENT = "document"
+    COURT_OPINION = "court_opinion"
+    OTHER = "other"
+
+
+class DocumentFormat(str, Enum):
+    """Available document formats."""
+    
+    PDF = "pdf"
+    XML = "xml"
+    HTML = "html"
+    MODS = "mods"
+    TEXT = "text"
+    
+
+class SourceReference(BaseModel):
+    """Reference to a source for a document or other entity."""
+    
+    source: ApiSource
+    """Source of the entity."""
+    
+    source_id: str
+    """Identifier at the source."""
+    
+    source_url: Optional[str] = None
+    """URL to access the entity at the source."""
+    
+    last_updated: Optional[datetime] = None
+    """When the entity was last updated at the source."""
+
+
+class Collection(BaseModel):
+    """A collection of related documents."""
+    
+    code: str
+    """Collection code (e.g., BILLS, FR)."""
+    
+    name: str
+    """Human-readable name of the collection."""
+    
+    member_count: int
+    """Number of documents in the collection."""
+    
+    last_updated: Optional[datetime] = None
+    """When the collection was last updated."""
+    
+    description: Optional[str] = None
+    """Description of the collection."""
+
+
+class Package(BaseModel):
+    """A document package from GovInfo.gov."""
+    
+    package_id: str
+    """Package ID (e.g., BILLS-117hr1625enr)."""
+    
+    collection_code: Optional[str] = None
+    """Collection code this package belongs to."""
+    
+    title: Optional[str] = None
+    """Title of the document."""
+    
+    date_issued: Optional[date] = None
+    """Date the document was issued."""
+    
+    last_modified: Optional[datetime] = None
+    """When the package was last modified."""
+    
+    pdf_url: Optional[str] = None
+    """URL to the PDF version."""
+    
+    xml_url: Optional[str] = None
+    """URL to the XML version."""
+    
+    mods_url: Optional[str] = None
+    """URL to the MODS metadata."""
+    
+    details: Dict[str, Any] = {}
+    """Additional package details."""
+    
+    formats: List[DocumentFormat] = []
+    """Available formats for this package."""
+    
+    source_reference: Optional[SourceReference] = None
+    """Source reference information."""
+
+
+class Granule(BaseModel):
+    """A granule (subdivision) of a document package."""
+    
+    granule_id: str
+    """Granule ID."""
+    
+    package_id: str
+    """Package ID this granule belongs to."""
+    
+    title: Optional[str] = None
+    """Title of the granule."""
+    
+    date_issued: Optional[date] = None
+    """Date the granule was issued."""
+    
+    last_modified: Optional[datetime] = None
+    """When the granule was last modified."""
+    
+    pdf_url: Optional[str] = None
+    """URL to the PDF version."""
+    
+    xml_url: Optional[str] = None
+    """URL to the XML version."""
+    
+    mods_url: Optional[str] = None
+    """URL to the MODS metadata."""
+    
+    details: Dict[str, Any] = {}
+    """Additional granule details."""
+    
+    formats: List[DocumentFormat] = []
+    """Available formats for this granule."""
+    
+    source_reference: Optional[SourceReference] = None
+    """Source reference information."""
+
 
 # Define DocumentReference directly here instead of importing from legislative_db
 class DocumentReference(BaseTable, table=True):

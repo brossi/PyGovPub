@@ -5,7 +5,7 @@ This module defines the event types and payload structures for
 legislative and regulatory real-time updates.
 """
 
-from datetime import datetime
+from datetime import datetime, date
 from enum import Enum, auto
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID, uuid4
@@ -78,6 +78,8 @@ class EventType(str, Enum):
     # Document updates
     DOCUMENT_AVAILABLE = "document_available"
     DOCUMENT_MODIFIED = "document_modified"
+    DOCUMENT_PUBLISHED = "document_published"
+    DOCUMENT_UPDATED = "document_updated"
     
     # System events
     SYSTEM_STARTUP = "system_startup"
@@ -239,3 +241,44 @@ class HearingUpdatePayload(EventPayload):
     
     documents: List[Dict[str, str]] = Field(default_factory=list)
     """List of documents related to the hearing."""
+
+
+class DocumentPublishedPayload(EventPayload):
+    """Payload for document published events."""
+    
+    document_id: str
+    """Identifier for the document."""
+    
+    document_type: str
+    """Type of document."""
+    
+    title: str
+    """Title of the document."""
+    
+    published_date: Optional[date] = None
+    """Date the document was published."""
+    
+    related_bills: List[str] = Field(default_factory=list)
+    """List of bill IDs related to the document."""
+
+
+class DocumentUpdatedPayload(EventPayload):
+    """Payload for document updated events."""
+    
+    document_id: str
+    """Identifier for the document."""
+    
+    document_type: str
+    """Type of document."""
+    
+    title: str
+    """Title of the document."""
+    
+    update_date: datetime
+    """Date and time the document was updated."""
+    
+    previous_version_id: Optional[str] = None
+    """Identifier for the previous version, if available."""
+    
+    related_bills: List[str] = Field(default_factory=list)
+    """List of bill IDs related to the document."""

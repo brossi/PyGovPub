@@ -358,78 +358,77 @@ class AuthManager:
         error_message = None
         response_time_ms = None
         rate_limit_headers = None
+        result = None
 
         try:
-            # Create a session
-            session = aiohttp.ClientSession()
-            try:
-                # Send the request and await the response
-                response = await session.request(
-                    method=auth_request["method"],
-                    url=auth_request["url"],
-                    params=auth_request["params"],
-                    headers=auth_request["headers"],
-                    json=json_data,
-                    timeout=timeout
-                )
-
-                # Process the response
+            # Use context manager to ensure proper session cleanup
+            async with aiohttp.ClientSession() as session:
                 try:
-                    status_code = int(response.status)
-                except (TypeError, ValueError):
-                    status_code = 0  # Default to 0 if we can't get a valid status code
-                response_time_ms = int((datetime.now(ZoneInfo("UTC")) - start_time).total_seconds() * 1000)
+                    # Send the request and await the response
+                    async with session.request(
+                        method=auth_request["method"],
+                        url=auth_request["url"],
+                        params=auth_request["params"],
+                        headers=auth_request["headers"],
+                        json=json_data,
+                        timeout=timeout
+                    ) as response:
+                        # Process the response
+                        try:
+                            status_code = int(response.status)
+                        except (TypeError, ValueError):
+                            status_code = 0  # Default to 0 if we can't get a valid status code
+                            
+                        response_time_ms = int((datetime.now(ZoneInfo("UTC")) - start_time).total_seconds() * 1000)
 
-                # Get headers safely
-                headers_dict = {}
-                if hasattr(response.headers, 'items'):
-                    try:
-                        if asyncio.iscoroutine(response.headers.items) or asyncio.iscoroutinefunction(response.headers.items):
-                            headers_items = await response.headers.items()
-                        else:
-                            headers_items = response.headers.items()
-                        headers_dict = {k.lower(): v for k, v in headers_items}
-                    except Exception as e:
-                        logger.warning(f"Failed to process response headers: {e}")
-                rate_limit_headers = headers_dict
+                        # Get headers safely
+                        headers_dict = {}
+                        if hasattr(response.headers, 'items'):
+                            try:
+                                if asyncio.iscoroutine(response.headers.items) or asyncio.iscoroutinefunction(response.headers.items):
+                                    headers_items = await response.headers.items()
+                                else:
+                                    headers_items = response.headers.items()
+                                headers_dict = {k.lower(): v for k, v in headers_items}
+                            except Exception as e:
+                                logger.warning(f"Failed to process response headers: {e}")
+                        rate_limit_headers = headers_dict
 
-                # Check for auth errors
-                if status_code in (401, 403):
-                    error_message = f"Authentication failed: {status_code}"
-                    raise AuthenticationError(error_message)
+                        # Check for auth errors
+                        if status_code in (401, 403):
+                            error_message = f"Authentication failed: {status_code}"
+                            raise AuthenticationError(error_message)
 
-                # Check other error status
-                if status_code >= 400:
-                    error_message = f"Request failed with status {status_code}"
-                    await response.raise_for_status()
+                        # Check other error status
+                        if status_code >= 400:
+                            error_message = f"Request failed with status {status_code}"
+                            await response.raise_for_status()
 
-                # Parse response body
-                success = True
-                # Process response content
-                try:
-                    # Try to get content type from headers
-                    try:
-                        content_type = response.headers.get("Content-Type", "")
-                    except Exception:
-                        content_type = "application/json"
+                        # Parse response body
+                        success = True
+                        
+                        # Process response content
+                        try:
+                            # Try to get content type from headers
+                            content_type = response.headers.get("Content-Type", "")
+                        except Exception:
+                            content_type = "application/json"
 
-                    # Try JSON first, fall back to text
-                    try:
-                        json_result = await response.json()
-                        if hasattr(response, 'release'):
-                            await response.release()
-                        return json_result
-                    except Exception:
-                        text = await response.text()
-                        if hasattr(response, 'release'):
-                            await response.release()
-                        return {"text": text}
+                        # Try JSON first, fall back to text
+                        try:
+                            result = await response.json()
+                        except Exception:
+                            try:
+                                text = await response.text()
+                                result = {"text": text}
+                            except Exception as e:
+                                logger.warning(f"Failed to read response content: {e}")
+                                # Provide a minimal result rather than failing completely
+                                result = {"error": f"Failed to process response: {str(e)}"}
                 except Exception as e:
-                    logger.warning(f"Failed to process response content: {e}")
+                    error_message = str(e)
                     raise
-            finally:
-                # Make sure to close the session
-                await session.close()
+                        
         except AuthenticationError:
             # Re-raise authentication errors
             raise
@@ -437,7 +436,7 @@ class AuthManager:
             error_message = str(e)
             raise
         finally:
-            # Track request for rate limiting
+            # Track request for rate limiting, regardless of success or failure
             await self.rate_limiter.track_request(
                 source=source,
                 endpoint=endpoint,
@@ -447,6 +446,8 @@ class AuthManager:
                 success=success,
                 error_message=error_message
             )
+            
+        return result
 
     def check_version_compatibility(self, source: ApiSource, version: str) -> bool:
         """
