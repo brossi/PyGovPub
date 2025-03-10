@@ -521,14 +521,107 @@ class CoverageAnalyzer:
             new_missing_count = len(new_missing)
             
             # Calculate projected coverage - handle missing statement count
-            if 'statements' not in data:
-                # If statements field is missing, use a safe default
-                statements = max(len(data.get('missing_lines', set())), new_missing_count)
+            if 'statements' not in data or data['statements'] == 0:
+                # If statements field is missing or zero, try to get a better count
+                try:
+                    # Count actual significant lines in the file
+                    def count_significant_lines(filepath):
+                        """Count the number of significant Python statements in a file"""
+                        if not os.path.exists(filepath):
+                            return 0
+                            
+                        try:
+                            with open(filepath, 'r') as f:
+                                content = f.read()
+                                
+                            # Special handling for __init__.py files which often have few statements
+                            if os.path.basename(filepath) == "__init__.py":
+                                # Parse the file to get actual statement count
+                                try:
+                                    tree = ast.parse(content)
+                                    # Count statements: imports, assignments, function/class defs
+                                    stmt_count = len([node for node in ast.walk(tree) 
+                                                    if isinstance(node, (ast.Import, ast.ImportFrom, ast.Assign, 
+                                                                        ast.AnnAssign, ast.AugAssign, ast.FunctionDef, 
+                                                                        ast.ClassDef, ast.Return, ast.Raise))])
+                                    return max(stmt_count, 1)  # At least 1 statement
+                                except SyntaxError:
+                                    # If we can't parse it, fall back to line counting method
+                                    pass
+                            
+                            # Count non-empty, non-comment, non-docstring lines
+                            lines = content.splitlines()
+                            in_docstring = False
+                            significant_count = 0
+                            
+                            for line in lines:
+                                line = line.strip()
+                                
+                                # Skip empty lines and comments
+                                if not line or line.startswith('#'):
+                                    continue
+                                    
+                                # Check for docstring start/end
+                                if line.startswith('"""') or line.startswith("'''"):
+                                    if line.endswith('"""') and len(line) > 3 or line.endswith("'''") and len(line) > 3:
+                                        # Single line docstring, skip
+                                        continue
+                                    else:
+                                        # Toggle docstring state
+                                        in_docstring = not in_docstring
+                                    continue
+                                
+                                # Skip docstring content
+                                if in_docstring:
+                                    if '"""' in line or "'''" in line:
+                                        in_docstring = False
+                                    continue
+                                
+                                # Check for actual code content, not just continuation lines
+                                if (line.endswith(':') or  # Function/class/if/loop definition
+                                    '=' in line or         # Assignment
+                                    line.startswith('return ') or # Return statement
+                                    line.startswith('import ') or # Import
+                                    line.startswith('from ') or   # Import from
+                                    line.startswith('raise ') or  # Exception
+                                    not line.startswith(' ') or   # Not a continuation line
+                                    line.strip(',()[]{}"\'').strip()): # Has actual content
+                                    significant_count += 1
+                            
+                            return max(significant_count, 1)  # At least 1 statement
+                        except Exception as e:
+                            print(f"Error analyzing {filepath}: {e}", file=sys.stderr)
+                            return 0
+                    
+                    # Try counting statements in the file
+                    statements_count = 0
+                    if os.path.exists(file_path):
+                        statements_count = count_significant_lines(file_path)
+                    else:
+                        # If file doesn't exist at this path, try with src/ prefix
+                        src_path = os.path.join('src', file_path)
+                        if os.path.exists(src_path):
+                            statements_count = count_significant_lines(src_path)
+                    
+                    # Use the larger of the calculated count and the missing lines count
+                    missing_lines_count = len(data.get('missing_lines', set()))
+                    if statements_count > 0:
+                        statements = max(statements_count, missing_lines_count, new_missing_count)
+                    else:
+                        # Fall back to a safe default using missing lines info
+                        statements = max(missing_lines_count, new_missing_count)
+                        if statements == 0:
+                            # Last resort - assume at least 5 lines for any source file
+                            statements = 5
+                except Exception as e:
+                    print(f"Error counting lines in {file_path}: {e}", file=sys.stderr)
+                    statements = max(len(data.get('missing_lines', set())), new_missing_count, 10)
             else:
                 statements = data['statements']
             
+            # Always ensure we have at least one statement to avoid division by zero
             if statements == 0:
-                statements = 1  # Avoid division by zero
+                statements = 1
                 
             covered = statements - new_missing_count
             # Ensure covered isn't negative (can happen if missing lines > statements)
@@ -544,6 +637,69 @@ class CoverageAnalyzer:
             # Ensure current_missing isn't greater than statements
             current_missing = min(current_missing, statements)
             current_percentage = round(100 * (statements - current_missing) / statements, 1) if statements else 100
+            
+            # Sanity check for calculated values
+            if current_percentage == 100.0:
+                # If we have a file with 100% coverage, double-check the statement count
+                try:
+                    # See if the file actually exists and has content
+                    file_to_check = file_path
+                    if not os.path.exists(file_path):
+                        # Try with src/ prefix
+                        src_path = os.path.join('src', file_path)
+                        if os.path.exists(src_path):
+                            file_to_check = src_path
+                        else:
+                            file_to_check = None
+                            
+                    if file_to_check:
+                        # For __init__.py files, use the AST-based parser to get accurate counts
+                        if os.path.basename(file_to_check) == "__init__.py":
+                            with open(file_to_check, 'r') as f:
+                                content = f.read()
+                            try:
+                                tree = ast.parse(content)
+                                ast_stmt_count = len([node for node in ast.walk(tree) 
+                                                if isinstance(node, (ast.Import, ast.ImportFrom, ast.Assign, 
+                                                                    ast.AnnAssign, ast.AugAssign, ast.FunctionDef, 
+                                                                    ast.ClassDef, ast.Return, ast.Raise))])
+                                
+                                # Adjust only if our AST count is substantially different from reported statements
+                                if abs(ast_stmt_count - statements) > 5:
+                                    print(f"Adjusting {file_path} statement count from {statements} to {ast_stmt_count} based on AST analysis", file=sys.stderr)
+                                    statements = ast_stmt_count
+                                    covered = statements  # Maintain 100% coverage
+                            except SyntaxError:
+                                # If we can't parse with AST, fall back to line check
+                                pass
+                        
+                        # General validation for all files
+                        with open(file_to_check, 'r') as f:
+                            content = f.read().strip()
+                        content_lines = content.splitlines()
+                        
+                        # If file has many more lines than reported statements, something may be wrong
+                        # But exclude specific files we know have few statements but many lines
+                        if (len(content_lines) > statements * 3 and 
+                            not file_path.endswith("__init__.py") and  # Special handling for __init__.py already done
+                            statements < 10):  # Only adjust small files with suspect counts
+                            
+                            # Count significant lines as a better estimate
+                            significant_lines = 0
+                            for line in content_lines:
+                                line = line.strip()
+                                if line and not line.startswith('#') and not line.startswith('"""') and not line.startswith("'''"):
+                                    significant_lines += 1
+                            
+                            adjusted_count = max(statements, significant_lines // 3)
+                            if adjusted_count > statements:
+                                print(f"Warning: {file_path} has {len(content_lines)} lines but only {statements} statements reported at 100% coverage", file=sys.stderr)
+                                print(f"Adjusting to {adjusted_count} statements based on file analysis", file=sys.stderr)
+                                statements = adjusted_count
+                                covered = statements  # Maintain 100% coverage
+                except Exception as e:
+                    # If we can't read the file, just use what we have
+                    print(f"Error in sanity check for {file_path}: {e}", file=sys.stderr)
             
             projected[file_path] = {
                 'statements': statements,
