@@ -7,5 +7,7 @@ and manage rate limits for Congress.gov and GovInfo.gov APIs.
 
 from .manager import CacheManager, CacheResult
 from .storage import MemoryStorage, CacheStorage
+from .rate_limit_cache import RateLimitCache, RateLimitInfo
 
-__all__ = ["CacheManager", "CacheResult", "MemoryStorage", "CacheStorage"]
+__all__ = ["CacheManager", "CacheResult", "MemoryStorage", "CacheStorage", 
+           "RateLimitCache", "RateLimitInfo"]
