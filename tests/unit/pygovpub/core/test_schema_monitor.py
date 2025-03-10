@@ -8,11 +8,24 @@ and handling API schema changes.
 import json
 import os
 import tempfile
+import warnings
 from datetime import datetime, timezone
 from typing import Dict, Any, List
+from contextlib import contextmanager
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+# Context manager to suppress specific jsonschema warnings
+@contextmanager
+def suppress_jsonschema_warnings():
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="The metaschema specified by \\$schema was not found.*",
+            category=DeprecationWarning
+        )
+        yield
 
 from pygovpub.auth.models import ApiSource
 from pygovpub.core.schema_monitor import (
@@ -205,11 +218,12 @@ class TestSchemaMonitor:
             }
             
             # Validate the initial response - should generate a schema
-            monitor.validate_response(
-                api_source=ApiSource.GOVINFO,
-                endpoint="test/item",
-                response_data=initial_response
-            )
+            with suppress_jsonschema_warnings():
+                monitor.validate_response(
+                    api_source=ApiSource.GOVINFO,
+                    endpoint="test/item",
+                    response_data=initial_response
+                )
             
             # Invalid response (wrong type for tags)
             invalid_response = {
@@ -219,11 +233,12 @@ class TestSchemaMonitor:
             }
             
             # Validate the invalid response
-            is_valid, changes = monitor.validate_response(
-                api_source=ApiSource.GOVINFO,
-                endpoint="test/item",
-                response_data=invalid_response
-            )
+            with suppress_jsonschema_warnings():
+                is_valid, changes = monitor.validate_response(
+                    api_source=ApiSource.GOVINFO,
+                    endpoint="test/item",
+                    response_data=invalid_response
+                )
             
             # The genson schema builder is adaptive and will update the schema
             # to accommodate both array and string types, rather than failing
@@ -238,18 +253,20 @@ class TestSchemaMonitor:
             assert "tags" in schema["properties"]
             
             # Now validation should pass with either format
-            is_valid, _ = monitor.validate_response(
-                api_source=ApiSource.GOVINFO,
-                endpoint="test/item",
-                response_data=initial_response  # Original array format
-            )
+            with suppress_jsonschema_warnings():
+                is_valid, _ = monitor.validate_response(
+                    api_source=ApiSource.GOVINFO,
+                    endpoint="test/item",
+                    response_data=initial_response  # Original array format
+                )
             assert is_valid is True
             
-            is_valid, _ = monitor.validate_response(
-                api_source=ApiSource.GOVINFO,
-                endpoint="test/item",
-                response_data=invalid_response  # String format
-            )
+            with suppress_jsonschema_warnings():
+                is_valid, _ = monitor.validate_response(
+                    api_source=ApiSource.GOVINFO,
+                    endpoint="test/item",
+                    response_data=invalid_response  # String format
+                )
             assert is_valid is True
 
 # Test module-level functions
@@ -260,11 +277,12 @@ def test_module_functions():
     response_data = {"test": "data"}
     
     # Test validate_response
-    is_valid, changes = validate_response(
-        api_source=ApiSource.INTERNAL,
-        endpoint="test",
-        response_data=response_data
-    )
+    with suppress_jsonschema_warnings():
+        is_valid, changes = validate_response(
+            api_source=ApiSource.INTERNAL,
+            endpoint="test",
+            response_data=response_data
+        )
     assert is_valid is True
     
     # Test get_recent_changes

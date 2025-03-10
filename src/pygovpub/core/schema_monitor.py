@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import jsonschema
 from genson import SchemaBuilder
 from deepdiff import DeepDiff
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from pygovpub.auth.models import ApiSource
 from pygovpub.error_reporting import report_error
@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 class SchemaVersion(BaseModel):
     """Schema version information."""
+    
+    model_config = ConfigDict()
     
     api_source: ApiSource
     """Source API."""
@@ -47,6 +49,8 @@ class SchemaVersion(BaseModel):
 
 class SchemaChange(BaseModel):
     """API schema change details."""
+    
+    model_config = ConfigDict()
     
     api_source: ApiSource
     """Source API."""

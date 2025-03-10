@@ -7,13 +7,15 @@ in the PyGovPub SDK, ensuring consistent data structures across APIs.
 
 from datetime import datetime, timezone
 from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 
 from pygovpub.auth.models import ApiSource
 
 
 class ResponseMetadata(BaseModel):
     """Metadata about the API response."""
+    
+    model_config = ConfigDict()
     
     source: ApiSource
     """Source API that provided the data."""
@@ -50,6 +52,8 @@ class ResponseMetadata(BaseModel):
 
 class PaginationInfo(BaseModel):
     """Pagination information for API responses."""
+    
+    model_config = ConfigDict()
     
     total_count: int
     """Total number of items available."""
@@ -95,6 +99,8 @@ class PaginationInfo(BaseModel):
 class ApiError(BaseModel):
     """Error information for API responses."""
     
+    model_config = ConfigDict()
+    
     message: str
     """Human-readable error message."""
     
@@ -113,6 +119,8 @@ T = TypeVar('T')
 
 class ApiResponse(BaseModel, Generic[T]):
     """Generic API response model with consistent structure."""
+    
+    model_config = ConfigDict()
     
     metadata: ResponseMetadata
     """Metadata about the response."""
