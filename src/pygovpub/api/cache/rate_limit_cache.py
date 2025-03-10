@@ -264,6 +264,9 @@ class RateLimitCache:
     
     def _parse_remaining(self, headers: Dict[str, str], source: ApiSource) -> Optional[int]:
         """Parse remaining requests from headers."""
+        if not headers:
+            return None
+            
         if source == ApiSource.CONGRESS:
             remaining = headers.get("x-ratelimit-remaining")
             if remaining:
@@ -282,6 +285,9 @@ class RateLimitCache:
     
     def _parse_reset_time(self, headers: Dict[str, str], source: ApiSource) -> Optional[float]:
         """Parse rate limit reset time from headers."""
+        if not headers:
+            return None
+            
         now = time.time()
         
         if source == ApiSource.CONGRESS:

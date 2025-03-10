@@ -12,6 +12,20 @@ This directory contains the test suite for the PyGovPub project. The testing fra
   - `fixtures/` - Test data and fixtures
   - `conftest.py` - PyTest configuration and fixtures
 
+## TODO: Integrated Testing Dashboard
+
+TODO: Implement a refactored test CLI reporting view that integrates all testing, code coverage, and refactoring analysis data into a clean and understandable report. The dashboard should:
+
+- Consolidate data from pytest, coverage reports, and refactoring analysis
+- Provide a unified view of test status, coverage metrics, and code quality
+- Support filtering and drill-down capabilities for detailed analysis
+- Highlight areas needing improvement with actionable recommendations
+- Include trend analysis to track progress over time
+- Generate exportable reports in multiple formats (JSON, Markdown, HTML)
+- Support CI/CD integration with configurable thresholds and gates
+
+This will replace the current separate reporting tools and provide a single source of truth for project quality metrics.
+
 ## Database Testing Architecture
 
 The PyGovPub testing framework is designed to support multiple database backends through a modular connection manager system. This allows tests to run against different database types with minimal changes to the test code.
