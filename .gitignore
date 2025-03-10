@@ -175,3 +175,15 @@ cython_debug/
 
 # Environment files
 .env*
+
+# Test artifacts and temporary directories
+tmp/**/*
+test_artifacts/**/*
+
+# Keep these directories but not their contents
+!tmp/.gitkeep
+!tmp/test_dbs/.gitkeep
+!tmp/artifacts/.gitkeep
+!test_artifacts/.gitkeep
+!test_artifacts/db/.gitkeep
+!test_artifacts/cache/.gitkeep

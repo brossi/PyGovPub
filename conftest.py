@@ -8,8 +8,13 @@ It also configures test collection to exclude stubs and work-in-progress tests.
 import os
 import sys
 import subprocess
+import tempfile
+import uuid
+import shutil
 from pathlib import Path
 import pytest
+from typing import Generator, Optional
+import time
 
 # Configuration to ensure consistent test environment
 def setup_test_paths():
@@ -148,3 +153,138 @@ def filter_warnings():
         message="cannot collect test class",
         category=pytest.PytestCollectionWarning
     )
+    
+    # Filter datetime.utcnow deprecation warnings
+    warnings.filterwarnings(
+        "ignore",
+        message="datetime.datetime.utcnow\\(\\) is deprecated",
+        category=DeprecationWarning
+    )
+
+
+@pytest.fixture
+def temp_dir() -> Generator[Path, None, None]:
+    """
+    Create a temporary directory for test artifacts.
+    
+    This uses a subdirectory in our managed tmp directory rather than
+    the system temp directory, which makes cleanup and debugging easier.
+    
+    Returns:
+        Path to a temporary directory that will be cleaned up after the test.
+    """
+    # Create a unique directory in our tmp/artifacts folder
+    base_dir = Path(__file__).parent / "tmp" / "artifacts"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    
+    temp_path = base_dir / f"test_{uuid.uuid4().hex}"
+    temp_path.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        yield temp_path
+    finally:
+        # Cleanup after test
+        if temp_path.exists():
+            shutil.rmtree(temp_path)
+
+
+@pytest.fixture
+def temp_db_path() -> Generator[str, None, None]:
+    """
+    Create a temporary SQLite database path for tests.
+    
+    This uses a file in our managed directory rather than a :memory: database,
+    which prevents issues with SQLite memory databases being created as real
+    files with :memory: prefixes.
+    
+    Returns:
+        Path to a temporary SQLite database that will be cleaned up after the test.
+    """
+    # Create a unique file in our tmp/test_dbs folder
+    base_dir = Path(__file__).parent / "tmp" / "test_dbs"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    
+    db_file = base_dir / f"test_db_{uuid.uuid4().hex}.sqlite"
+    
+    # Convert to string for SQLAlchemy
+    db_path = f"sqlite:///{db_file}"
+    
+    try:
+        yield db_path
+    finally:
+        # Cleanup the database file
+        if db_file.exists():
+            try:
+                db_file.unlink()
+            except (PermissionError, OSError):
+                # If can't delete immediately (e.g., Windows file locks),
+                # mark for deletion on next run
+                with open(base_dir / "_cleanup_list.txt", "a") as f:
+                    f.write(f"{db_file}\n")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_orphaned_files():
+    """
+    Cleanup any orphaned files from previous test runs.
+    
+    This runs once at the beginning of the test session and tries to
+    clean up any files that couldn't be deleted in previous runs.
+    """
+    # Clean up any previously marked files that couldn't be deleted
+    base_dir = Path(__file__).parent / "tmp" / "test_dbs"
+    cleanup_file = base_dir / "_cleanup_list.txt"
+    
+    if cleanup_file.exists():
+        try:
+            with open(cleanup_file, "r") as f:
+                files_to_clean = f.read().splitlines()
+            
+            # Try to delete each file
+            for file_path in files_to_clean:
+                file_path = Path(file_path.strip())
+                if file_path.exists():
+                    try:
+                        file_path.unlink()
+                    except (PermissionError, OSError):
+                        # Still can't delete, will try again next time
+                        pass
+                        
+            # Rewrite the cleanup list with only the files we couldn't delete
+            with open(cleanup_file, "w") as f:
+                for file_path in files_to_clean:
+                    path = Path(file_path.strip())
+                    if path.exists():
+                        f.write(f"{file_path}\n")
+        except Exception as e:
+            print(f"Error cleaning up orphaned files: {e}")
+    
+    # Also delete any old test artifacts that might be hanging around
+    # (older than 1 day)
+    try:
+        for test_dir in [
+            Path(__file__).parent / "tmp" / "artifacts",
+            Path(__file__).parent / "tmp" / "test_dbs",
+            Path(__file__).parent / "test_artifacts" / "db",
+            Path(__file__).parent / "test_artifacts" / "cache"
+        ]:
+            if test_dir.exists():
+                for item in test_dir.iterdir():
+                    if item.name == ".gitkeep" or item.name == "_cleanup_list.txt":
+                        continue
+                        
+                    try:
+                        item_stat = item.stat()
+                        # If older than 1 day (86400 seconds)
+                        if time.time() - item_stat.st_mtime > 86400:
+                            if item.is_file():
+                                item.unlink()
+                            elif item.is_dir():
+                                shutil.rmtree(item)
+                    except (PermissionError, OSError) as e:
+                        print(f"Could not clean up {item}: {e}")
+    except Exception as e:
+        print(f"Error cleaning up old test artifacts: {e}")
+        
+    # The fixture doesn't need to yield anything
+    yield

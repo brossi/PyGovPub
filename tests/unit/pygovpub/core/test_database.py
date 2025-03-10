@@ -48,22 +48,36 @@ class TestModel(BaseTable, table=True):
 
 
 @pytest.fixture
-def test_db_url():
-    """Provide a unique in-memory SQLite URL for testing."""
-    return f"sqlite:///:memory:{uuid.uuid4()}"
+def test_db_url(temp_db_path):
+    """Provide a temporary SQLite URL for testing.
+    
+    This uses the temp_db_path fixture to ensure the database file
+    is properly cleaned up after the test.
+    """
+    return temp_db_path
 
 
 @pytest.fixture
-def test_async_db_url():
-    """Provide a unique in-memory SQLite URL for testing async operations."""
-    return f"sqlite+aiosqlite:///:memory:{uuid.uuid4()}"
+def test_async_db_url(temp_db_path):
+    """Provide a temporary SQLite URL for testing async operations.
+    
+    This modifies the temp_db_path fixture to use the aiosqlite dialect.
+    """
+    # Convert sqlite:/// to sqlite+aiosqlite:///
+    return temp_db_path.replace("sqlite:", "sqlite+aiosqlite:")
 
 
 @pytest.fixture
-def env_setup(monkeypatch):
-    """Setup environment variables for database connection."""
+def env_setup(monkeypatch, temp_db_path):
+    """Setup environment variables for database connection.
+    
+    This uses the temp_db_path fixture to ensure the database file
+    is properly cleaned up after the test.
+    """
+    db_file = temp_db_path.replace("sqlite:///", "")
+    
     monkeypatch.setenv("DB_TYPE", "sqlite")
-    monkeypatch.setenv("DB_HOST", ":memory:")
+    monkeypatch.setenv("DB_HOST", db_file)  # Use file path instead of :memory:
     monkeypatch.setenv("DB_PORT", "")
     monkeypatch.setenv("DB_NAME", "test_db")
     monkeypatch.setenv("DB_USER", "test_user")
@@ -73,7 +87,7 @@ def env_setup(monkeypatch):
 def test_get_connection_url(env_setup):
     """Test that connection URL is correctly constructed from environment variables."""
     url = get_connection_url()
-    assert "sqlite:///:memory:" in url  # Note the extra slash in the URL
+    assert "sqlite:///" in url  # Should start with sqlite:///
     
     # Test with a different database type
     with patch.dict(os.environ, {"DB_TYPE": "postgresql"}):
@@ -112,10 +126,10 @@ def test_get_engine():
         assert engine3 is not engine1
 
 
-def test_get_session():
+def test_get_session(test_db_url):
     """Test the session factory."""
     # Initialize with a test engine
-    engine = create_engine(f"sqlite:///:memory:{uuid.uuid4()}")
+    engine = create_engine(test_db_url)
     
     with patch('pygovpub.core.database.get_engine', return_value=engine):
         # Get a session
@@ -137,10 +151,10 @@ def test_get_session():
         assert results[0].name == "Test"
 
 
-def test_with_transaction():
+def test_with_transaction(test_db_url):
     """Test the transaction context manager."""
     # Initialize with a test engine
-    engine = create_engine(f"sqlite:///:memory:{uuid.uuid4()}")
+    engine = create_engine(test_db_url)
     SQLModel.metadata.create_all(engine)
     
     with patch('pygovpub.core.database.get_engine', return_value=engine):
@@ -233,9 +247,9 @@ async def test_with_async_transaction(test_async_db_url):
             assert len(models) == 1  # Still just the first one
 
 
-def test_create_tables():
+def test_create_tables(test_db_url):
     """Test that tables can be created in the database."""
-    engine = create_engine(f"sqlite:///:memory:{uuid.uuid4()}")
+    engine = create_engine(test_db_url)
     
     # Use patch to mock SQLModel.metadata.create_all to create our test table
     with patch('sqlmodel.SQLModel.metadata.create_all') as mock_create_all:
@@ -255,9 +269,9 @@ def test_create_tables():
     assert "test_models" in tables
 
 
-def test_drop_tables():
+def test_drop_tables(test_db_url):
     """Test that tables can be dropped from the database."""
-    engine = create_engine(f"sqlite:///:memory:{uuid.uuid4()}")
+    engine = create_engine(test_db_url)
     
     # Create the test table directly
     TestModel.__table__.create(engine)
@@ -284,9 +298,9 @@ def test_drop_tables():
     assert len(tables_after) == 0
 
 
-def test_get_migration_version():
+def test_get_migration_version(test_db_url):
     """Test retrieving the current migration version."""
-    engine = create_engine(f"sqlite:///:memory:{uuid.uuid4()}")
+    engine = create_engine(test_db_url)
     
     with patch('pygovpub.core.database.get_engine', return_value=engine):
         # Create migration version table
@@ -302,9 +316,9 @@ def test_get_migration_version():
                 assert version == "1.0.0"
 
 
-def test_run_migrations():
+def test_run_migrations(test_db_url):
     """Test running database migrations."""
-    engine = create_engine(f"sqlite:///:memory:{uuid.uuid4()}")
+    engine = create_engine(test_db_url)
     
     with patch('pygovpub.core.database.get_engine', return_value=engine):
         # Mock the migration manager
@@ -320,9 +334,9 @@ def test_run_migrations():
             mock_run.assert_called_with(target_version="1.1.0")
 
 
-def test_migration_manager():
+def test_migration_manager(test_db_url):
     """Test the migration manager."""
-    engine = create_engine(f"sqlite:///:memory:{uuid.uuid4()}")
+    engine = create_engine(test_db_url)
     
     # Create a migration manager
     manager = MigrationManager(engine)
