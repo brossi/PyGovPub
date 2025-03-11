@@ -1,0 +1,265 @@
+"""
+Core search functionality.
+
+This module provides the core search functionality for PyGovPub.
+"""
+
+import logging
+from datetime import datetime
+from enum import Enum, auto
+from typing import Any, Dict, List, Optional, Set, Union, TypeVar, Generic, ClassVar
+
+from pydantic import BaseModel, Field, root_validator
+
+logger = logging.getLogger("pygovpub.search.core")
+
+# Type aliases for clarity
+DocumentId = str
+SourceId = str
+FieldName = str
+FieldValue = Union[str, int, float, bool, List[str], List[int], List[float], datetime, None]
+
+T = TypeVar('T')
+
+
+class SearchResultType(str, Enum):
+    """Type of search result."""
+    BILL = "bill"
+    DOCUMENT = "document"
+    MEMBER = "member"
+    COMMITTEE = "committee"
+    CFR = "cfr"
+    COURT_OPINION = "court_opinion"
+    OTHER = "other"
+
+
+class SearchOperator(str, Enum):
+    """Operators for search queries."""
+    AND = "AND"
+    OR = "OR"
+    NOT = "NOT"
+    EXACT = "EXACT"
+    FUZZY = "FUZZY"
+    PREFIX = "PREFIX"
+    SUFFIX = "SUFFIX"
+    WILDCARD = "WILDCARD"
+    RANGE = "RANGE"
+
+
+class QueryComponent(BaseModel):
+    """Component of a search query."""
+    operator: SearchOperator = SearchOperator.AND
+    field: Optional[str] = None
+    value: Union[str, List[str], Dict[str, Any], None] = None
+    boost: float = 1.0
+    sub_components: List["QueryComponent"] = Field(default_factory=list)
+
+    class Config:
+        """Configuration for the model."""
+        arbitrary_types_allowed = True
+
+
+class SearchQuery(BaseModel):
+    """Search query model."""
+    query_text: Optional[str] = None
+    components: List[QueryComponent] = Field(default_factory=list)
+    filters: Dict[str, Any] = Field(default_factory=dict)
+    offset: int = 0
+    limit: int = 20
+    sort_by: Optional[str] = None
+    sort_order: str = "desc"
+    highlight: bool = True
+    facets: List[str] = Field(default_factory=list)
+    sources: List[str] = Field(default_factory=list)
+    
+    @root_validator
+    def check_query_components(cls, values):
+        """Ensure query has either text or components."""
+        query_text = values.get('query_text')
+        components = values.get('components')
+        if not query_text and not components:
+            raise ValueError("Either query_text or components must be provided")
+        return values
+
+
+class Highlight(BaseModel):
+    """Highlighted text in search results."""
+    field: str
+    fragments: List[str] = Field(default_factory=list)
+
+
+class Facet(BaseModel):
+    """Facet information for search refinement."""
+    field: str
+    values: Dict[str, int] = Field(default_factory=dict)
+
+
+class SearchResult(BaseModel):
+    """Search result model."""
+    result_id: str
+    type: SearchResultType
+    source: str
+    score: float = 0.0
+    title: str
+    url: Optional[str] = None
+    date: Optional[datetime] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    highlights: List[Highlight] = Field(default_factory=list)
+    text_snippet: Optional[str] = None
+
+
+class SearchResults(BaseModel, Generic[T]):
+    """Container for search results."""
+    total: int = 0
+    offset: int = 0
+    limit: int = 20
+    query: SearchQuery
+    results: List[T] = Field(default_factory=list)
+    facets: Dict[str, Facet] = Field(default_factory=dict)
+    execution_time_ms: Optional[int] = None
+    source_counts: Dict[str, int] = Field(default_factory=dict)
+
+
+class SearchProvider:
+    """Base class for search providers."""
+    
+    provider_name: ClassVar[str] = "base"
+    supported_types: ClassVar[List[SearchResultType]] = []
+    
+    async def search(self, query: SearchQuery) -> SearchResults:
+        """Execute search query.
+        
+        Args:
+            query: Search query
+            
+        Returns:
+            Search results
+        """
+        raise NotImplementedError("Subclasses must implement search")
+    
+    async def initialize(self) -> None:
+        """Initialize the search provider."""
+        pass
+    
+    async def shutdown(self) -> None:
+        """Shut down the search provider."""
+        pass
+    
+    def can_handle(self, query: SearchQuery) -> bool:
+        """Check if this provider can handle the query.
+        
+        Args:
+            query: Search query
+            
+        Returns:
+            True if this provider can handle the query
+        """
+        if not query.sources:
+            return True
+        return self.provider_name in query.sources
+
+
+class SearchManager:
+    """Manager for search operations across providers."""
+    
+    def __init__(self):
+        """Initialize search manager."""
+        self.providers: Dict[str, SearchProvider] = {}
+        self.initialized = False
+    
+    def register_provider(self, provider: SearchProvider) -> None:
+        """Register a search provider.
+        
+        Args:
+            provider: Search provider to register
+        """
+        self.providers[provider.provider_name] = provider
+        logger.info(f"Registered search provider: {provider.provider_name}")
+    
+    async def initialize(self) -> None:
+        """Initialize all registered providers."""
+        if self.initialized:
+            return
+        
+        for name, provider in self.providers.items():
+            try:
+                await provider.initialize()
+                logger.info(f"Initialized search provider: {name}")
+            except Exception as e:
+                logger.exception(f"Failed to initialize search provider {name}: {e}")
+        
+        self.initialized = True
+    
+    async def shutdown(self) -> None:
+        """Shut down all registered providers."""
+        for name, provider in self.providers.items():
+            try:
+                await provider.shutdown()
+                logger.info(f"Shut down search provider: {name}")
+            except Exception as e:
+                logger.exception(f"Failed to shut down search provider {name}: {e}")
+        
+        self.initialized = False
+    
+    async def search(self, query: SearchQuery) -> SearchResults:
+        """Execute search query across appropriate providers.
+        
+        Args:
+            query: Search query
+            
+        Returns:
+            Combined search results
+        """
+        if not self.initialized:
+            await self.initialize()
+        
+        # Determine which providers to use
+        providers_to_use = []
+        for name, provider in self.providers.items():
+            if provider.can_handle(query):
+                providers_to_use.append(provider)
+        
+        if not providers_to_use:
+            logger.warning(f"No providers available for query: {query}")
+            return SearchResults(
+                total=0,
+                query=query,
+                results=[],
+                execution_time_ms=0
+            )
+        
+        # Execute search on each provider and combine results
+        all_results = []
+        total_count = 0
+        source_counts = {}
+        
+        for provider in providers_to_use:
+            try:
+                provider_results = await provider.search(query)
+                all_results.extend(provider_results.results)
+                total_count += provider_results.total
+                
+                # Track source counts
+                source_counts[provider.provider_name] = provider_results.total
+                
+                # Merge facets
+                # For now, we'll take the union of facet fields
+                # and the sum of facet counts
+                # TODO: Improve facet merging logic
+            except Exception as e:
+                logger.exception(f"Error searching with provider {provider.provider_name}: {e}")
+        
+        # Sort results by score
+        all_results.sort(key=lambda x: x.score, reverse=True)
+        
+        # Apply offset and limit
+        paginated_results = all_results[query.offset:query.offset + query.limit]
+        
+        return SearchResults(
+            total=total_count,
+            offset=query.offset,
+            limit=query.limit,
+            query=query,
+            results=paginated_results,
+            source_counts=source_counts
+        )
