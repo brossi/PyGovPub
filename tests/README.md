@@ -62,10 +62,12 @@ def test_example(warning_recorder):
 
 ### Common Warning Patterns
 
-1. **Pydantic V2 Warnings**: These are ignored by default as we transition to the new API
+1. **Pydantic V2 Warnings**: These must be fixed immediately by updating to the current API
 2. **SQLAlchemy Deprecation Warnings**: These should be fixed promptly
 3. **RuntimeWarnings**: These should be addressed during development
 4. **asyncio Warnings**: Verify proper usage of async/await
+
+All warnings are treated as errors by default to maintain code quality. The PyGovPub project policy is to fix ALL warnings rather than ignore them.
 
 ## TODO: Integrated Testing Dashboard
 
