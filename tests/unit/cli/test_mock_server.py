@@ -7,7 +7,7 @@ import os
 import pytest
 import signal
 import types
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock, AsyncMock, call
 
 from pygovpub.cli.mock_server import (
     parse_args,
@@ -16,12 +16,22 @@ from pygovpub.cli.mock_server import (
     start_mock_server_cli
 )
 
-# Helper function to create a fake coroutine function that won't complain about not being awaited
+# Helper functions to create proper mock coroutines
 def mock_coro(return_value=None):
     """Create a mocked coroutine function that returns a regular function instead of a coroutine."""
     def mock_coroutine(*args, **kwargs):
         return return_value
     return mock_coroutine
+
+async def async_mock_return(return_value=None):
+    """A simple async function that returns a value."""
+    return return_value
+
+def async_mock_coro(return_value=None):
+    """Create a mocked coroutine function that returns an awaitable."""
+    async def mock_async_coroutine(*args, **kwargs):
+        return return_value
+    return mock_async_coroutine
 
 
 class TestMockServerCLI:
@@ -58,6 +68,17 @@ class TestMockServerCLI:
         assert args.rate_limits
         assert args.record
         assert args.fixtures == "/custom/path"
+
+    def test_parse_args_log_level_validation(self):
+        """Test parse_args validates log level choices."""
+        # Valid log levels should succeed
+        for level in ["debug", "info", "warning", "error", "critical"]:
+            args = parse_args(["--log-level", level])
+            assert args.log_level == level
+        
+        # Invalid log level should fail
+        with pytest.raises(SystemExit):
+            parse_args(["--log-level", "invalid"])
 
     @pytest.mark.asyncio
     @patch("pygovpub.cli.mock_server.start_mock_server")
@@ -106,6 +127,12 @@ class TestMockServerCLI:
         assert os.environ["PYGOVPUB_MOCK_FIXTURES_PATH"] == "/test/fixtures"
         assert os.environ["PYGOVPUB_MOCK_ENABLED"] == "true"
         
+        # Verify logging was configured
+        mock_logging.basicConfig.assert_called_once_with(
+            level=mock_logging.INFO,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        
         # Verify start_mock_server was called
         mock_start_server.assert_called_once_with(
             host="127.0.0.1",
@@ -115,6 +142,82 @@ class TestMockServerCLI:
         
         # Verify signal handlers were set
         assert mock_loop.add_signal_handler.call_count == 2
+        
+        # Verify logger.info calls
+        assert mock_logger.info.call_count >= 6
+        mock_logger.info.assert_any_call(f"Starting mock server on 127.0.0.1:8000")
+        mock_logger.info.assert_any_call(f"Log level: info")
+        mock_logger.info.assert_any_call(f"Latency: 100ms")
+        mock_logger.info.assert_any_call(f"Rate limits: True")
+        mock_logger.info.assert_any_call(f"Record mode: True")
+        mock_logger.info.assert_any_call(f"Fixtures path: /test/fixtures")
+        mock_logger.info.assert_any_call(f"Mock server running at http://127.0.0.1:8000")
+        mock_logger.info.assert_any_call("Press Ctrl+C to stop")
+
+    @pytest.mark.asyncio
+    @patch("pygovpub.cli.mock_server.start_mock_server")
+    @patch("pygovpub.cli.mock_server.config")
+    @patch("pygovpub.cli.mock_server.logging")
+    async def test_run_server_without_optional_args(self, mock_logging, mock_config, mock_start_server):
+        """Test run_server function without optional argument values."""
+        # Clear any existing environment variables that might interfere with the test
+        for env_var in [
+            "PYGOVPUB_MOCK_LATENCY_MS",
+            "PYGOVPUB_MOCK_SIMULATE_RATE_LIMITS",
+            "PYGOVPUB_MOCK_RECORD_MODE",
+            "PYGOVPUB_MOCK_FIXTURES_PATH",
+            "PYGOVPUB_MOCK_ENABLED"
+        ]:
+            if env_var in os.environ:
+                del os.environ[env_var]
+                
+        # Create mock args with default values (None)
+        args = argparse.Namespace(
+            host="127.0.0.1",
+            port=8000,
+            log_level="info",
+            latency=None,     # No latency specified
+            rate_limits=False, # No rate limits
+            record=False,      # No record mode
+            fixtures=None      # No custom fixtures
+        )
+        
+        # Mock logger
+        mock_logger = MagicMock()
+        mock_logging.getLogger.return_value = mock_logger
+        
+        # Mock config properties with default values
+        mock_config.mock.latency_ms = 0  # Default latency
+        mock_config.mock.simulate_rate_limits = False
+        mock_config.mock.record_mode = False
+        mock_config.mock.fixtures_path = "fixtures"  # Default path
+        
+        # Mock asyncio functions
+        mock_loop = MagicMock()
+        
+        # Make start_mock_server return a proper awaitable
+        mock_start_server.return_value = None
+        
+        with patch("asyncio.get_event_loop", return_value=mock_loop):
+            # Mock asyncio.sleep to avoid infinite loop
+            with patch("asyncio.sleep", side_effect=[None, asyncio.CancelledError]):
+                # Run the function
+                with pytest.raises(asyncio.CancelledError):
+                    await run_server(args)
+        
+        # Verify environment variables are set appropriately (only PYGOVPUB_MOCK_ENABLED)
+        assert "PYGOVPUB_MOCK_LATENCY_MS" not in os.environ  # Should not be set
+        assert "PYGOVPUB_MOCK_SIMULATE_RATE_LIMITS" not in os.environ  # Should not be set
+        assert "PYGOVPUB_MOCK_RECORD_MODE" not in os.environ  # Should not be set
+        assert "PYGOVPUB_MOCK_FIXTURES_PATH" not in os.environ  # Should not be set
+        assert os.environ["PYGOVPUB_MOCK_ENABLED"] == "true"  # This should always be set
+        
+        # Verify start_mock_server was called with correct parameters
+        mock_start_server.assert_called_once_with(
+            host="127.0.0.1",
+            port=8000,
+            log_level="info"
+        )
 
     @pytest.mark.asyncio
     @patch("pygovpub.cli.mock_server.stop_mock_server")
@@ -135,6 +238,12 @@ class TestMockServerCLI:
         
         # Verify stop_mock_server was called
         mock_stop_server.assert_called_once()
+        
+        # Verify logger messages
+        mock_logger.info.assert_has_calls([
+            call("Shutting down mock server..."),
+            call("Mock server stopped")
+        ])
         
         # Verify loop.stop was called
         mock_loop.stop.assert_called_once()
@@ -195,3 +304,46 @@ class TestMockServerCLI:
             
             # Verify sys.exit was called with error code
             mock_exit.assert_called_once_with(1)
+    
+    @pytest.mark.asyncio
+    @patch("pygovpub.cli.mock_server.asyncio.create_task")
+    async def test_signal_handler(self, mock_create_task):
+        """Test the signal handler behavior."""
+        # Setup mock
+        mock_loop = MagicMock()
+        
+        # We need to access the signal handler callback that gets registered
+        with patch("asyncio.get_event_loop", return_value=mock_loop):
+            with patch("pygovpub.cli.mock_server.shutdown", new=async_mock_coro()):
+                # Create mock args
+                args = argparse.Namespace(
+                    host="localhost", 
+                    port=8000, 
+                    log_level="info",
+                    latency=None,
+                    rate_limits=False,
+                    record=False,
+                    fixtures=None
+                )
+                
+                # Setup other mocks to prevent the function from running too far
+                with patch("pygovpub.cli.mock_server.start_mock_server", new=async_mock_coro()):
+                    with patch("pygovpub.cli.mock_server.logging"):
+                        with patch("asyncio.sleep", side_effect=[await async_mock_return(), asyncio.CancelledError()]):
+                            try:
+                                # Try to run the server
+                                await run_server(args)
+                            except asyncio.CancelledError:
+                                pass  # Expected exception
+        
+        # Verify the loop.add_signal_handler was called for both signals
+        assert mock_loop.add_signal_handler.call_count == 2
+        
+        # Extract the lambda function that was passed
+        signal_handler = mock_loop.add_signal_handler.call_args_list[0][0][1]
+        
+        # Call the signal handler
+        signal_handler()
+        
+        # Verify that asyncio.create_task was called with shutdown
+        mock_create_task.assert_called_once()
