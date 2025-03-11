@@ -27,8 +27,10 @@ from pygovpub.exceptions import (
 from pygovpub.api.routers import (
     bills_router,
     committees_router,
+    congress_router,
     documents_router,
-    members_router
+    members_router,
+    webhooks_router
 )
 
 # Configure logging
@@ -239,8 +241,10 @@ def setup_routers():
     # Register all routers
     app.include_router(bills_router)
     app.include_router(committees_router)
+    app.include_router(congress_router)
     app.include_router(documents_router)
     app.include_router(members_router)
+    app.include_router(webhooks_router)
 
 # Set up the routers
 setup_routers()
@@ -258,8 +262,10 @@ async def root():
         "endpoints": {
             "bills": "/bills",
             "committees": "/committees",
+            "congress": "/congress",
             "documents": "/documents",
             "members": "/members",
+            "webhooks": "/webhooks",
         }
     }
 
