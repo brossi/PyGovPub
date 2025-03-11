@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body, Request
-from pydantic import BaseModel, Field, AnyHttpUrl, validator
+from pydantic import BaseModel, Field, AnyHttpUrl, field_validator
 
 from pygovpub.api.router import ApiRouter
 from pygovpub.auth.models import ApiSource
@@ -46,6 +46,19 @@ class EventType(BaseModel):
     event_type: str = Field(..., description="Event type (e.g., bill.introduced, bill.updated)")
     description: str = Field(..., description="Description of the event type")
     example_payload: Dict[str, Any] = Field({}, description="Example payload for this event type")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "event_type": "bill.introduced",
+                "description": "Triggered when a new bill is introduced",
+                "example_payload": {
+                    "event_type": "bill.introduced",
+                    "bill_id": "hr1234-117",
+                    "title": "Example Bill"
+                }
+            }
+        }
 
 
 class WebhookSubscription(BaseModel):
@@ -60,7 +73,8 @@ class WebhookSubscription(BaseModel):
     secret: Optional[str] = Field(None, description="Secret for signing webhook payloads")
     description: Optional[str] = Field(None, description="Description of the subscription")
     
-    @validator('event_types')
+    @field_validator('event_types')
+    @classmethod
     def validate_event_types(cls, v):
         """Validate event types."""
         valid_types = [
@@ -76,6 +90,18 @@ class WebhookSubscription(BaseModel):
             if event_type not in valid_types:
                 raise ValueError(f"Invalid event type: {event_type}. Must be one of: {', '.join(valid_types)}")
         return v
+        
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+                "url": "https://example.com/webhook",
+                "event_types": ["bill.introduced", "bill.updated"],
+                "created_at": "2023-01-01T00:00:00Z",
+                "is_active": True,
+                "description": "Example subscription"
+            }
+        }
 
 
 class WebhookSubscriptionCreate(BaseModel):
@@ -85,6 +111,16 @@ class WebhookSubscriptionCreate(BaseModel):
     event_types: List[str] = Field(..., description="List of event types to subscribe to")
     secret: Optional[str] = Field(None, description="Secret for signing webhook payloads")
     description: Optional[str] = Field(None, description="Description of the subscription")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "url": "https://example.com/webhook",
+                "event_types": ["bill.introduced", "bill.updated"],
+                "secret": "your_webhook_secret",
+                "description": "Example subscription creation"
+            }
+        }
 
 
 class WebhookSubscriptionUpdate(BaseModel):
@@ -95,6 +131,16 @@ class WebhookSubscriptionUpdate(BaseModel):
     is_active: Optional[bool] = Field(None, description="Whether the subscription is active")
     secret: Optional[str] = Field(None, description="Secret for signing webhook payloads")
     description: Optional[str] = Field(None, description="Description of the subscription")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "url": "https://example.com/webhook-updated",
+                "event_types": ["bill.introduced", "bill.updated", "bill.action"],
+                "is_active": True,
+                "description": "Updated subscription"
+            }
+        }
 
 
 class WebhookSubscriptionList(BaseModel):
@@ -102,6 +148,23 @@ class WebhookSubscriptionList(BaseModel):
     
     subscriptions: List[WebhookSubscription] = Field(..., description="List of webhook subscriptions")
     count: int = Field(..., description="Total count of webhook subscriptions")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "subscriptions": [
+                    {
+                        "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+                        "url": "https://example.com/webhook",
+                        "event_types": ["bill.introduced", "bill.updated"],
+                        "created_at": "2023-01-01T00:00:00Z",
+                        "is_active": True,
+                        "description": "Example subscription"
+                    }
+                ],
+                "count": 1
+            }
+        }
 
 
 class WebhookDelivery(BaseModel):
@@ -116,6 +179,24 @@ class WebhookDelivery(BaseModel):
     response: Optional[str] = Field(None, description="Response from webhook target")
     created_at: datetime = Field(default_factory=datetime.now, description="When delivery was made")
     error: Optional[str] = Field(None, description="Error message if delivery failed")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+                "subscription_id": "a47ac10b-58cc-4372-a567-0e02b2c3d479",
+                "event_type": "bill.introduced",
+                "payload": {
+                    "event_type": "bill.introduced",
+                    "bill_id": "hr1234-117",
+                    "title": "Example Bill"
+                },
+                "status": "success",
+                "status_code": 200,
+                "response": "OK",
+                "created_at": "2023-01-01T00:00:00Z"
+            }
+        }
 
 
 class WebhookDeliveryList(BaseModel):
@@ -123,6 +204,29 @@ class WebhookDeliveryList(BaseModel):
     
     deliveries: List[WebhookDelivery] = Field(..., description="List of webhook deliveries")
     count: int = Field(..., description="Total count of webhook deliveries")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "deliveries": [
+                    {
+                        "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+                        "subscription_id": "a47ac10b-58cc-4372-a567-0e02b2c3d479",
+                        "event_type": "bill.introduced",
+                        "payload": {
+                            "event_type": "bill.introduced",
+                            "bill_id": "hr1234-117",
+                            "title": "Example Bill"
+                        },
+                        "status": "success",
+                        "status_code": 200,
+                        "response": "OK",
+                        "created_at": "2023-01-01T00:00:00Z"
+                    }
+                ],
+                "count": 1
+            }
+        }
 
 
 @router.get("/event-types", response_model=List[EventType])

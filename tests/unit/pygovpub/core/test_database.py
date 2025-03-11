@@ -133,6 +133,11 @@ def test_get_session(test_db_url):
     engine = create_engine(test_db_url)
     
     with patch('pygovpub.core.database.get_engine', return_value=engine):
+        # Create the table manually before testing
+        inspector = sqlalchemy.inspect(engine)
+        if "db_test_models" not in inspector.get_table_names():
+            DBTestModel.__table__.create(engine)
+            
         # Get a session
         session = get_session()
         assert isinstance(session, Session)
@@ -141,7 +146,6 @@ def test_get_session(test_db_url):
         assert session.get_bind() == engine
         
         # Test that the session can be used
-        SQLModel.metadata.create_all(engine)
         model = DBTestModel(test_id=str(uuid.uuid4()), name="Test")
         session.add(model)
         session.commit()
@@ -156,9 +160,13 @@ def test_with_transaction(test_db_url):
     """Test the transaction context manager."""
     # Initialize with a test engine
     engine = create_engine(test_db_url)
-    SQLModel.metadata.create_all(engine)
     
     with patch('pygovpub.core.database.get_engine', return_value=engine):
+        # Create the table manually before testing
+        inspector = sqlalchemy.inspect(engine)
+        if "db_test_models" not in inspector.get_table_names():
+            DBTestModel.__table__.create(engine)
+            
         # Test successful transaction
         with with_transaction() as session:
             model = DBTestModel(test_id=str(uuid.uuid4()), name="Test")
@@ -190,9 +198,19 @@ async def test_async_session(test_async_db_url):
     """Test async database session."""
     engine = create_async_engine(test_async_db_url)
     
-    # Create tables
+    # Create tables specifically for DBTestModel
     async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+        # Directly create the table - if it exists, this will be ignored
+        await conn.run_sync(lambda sync_conn: 
+            sync_conn.execute(sqlalchemy.text(
+                "CREATE TABLE IF NOT EXISTS db_test_models ("
+                "test_id TEXT PRIMARY KEY, "
+                "name TEXT NOT NULL, "
+                "description TEXT, "
+                "created_at TEXT, "
+                "updated_at TEXT)"
+            ))
+        )
     
     with patch('pygovpub.core.database.get_async_engine', return_value=engine):
         async with get_async_session() as session:
@@ -215,9 +233,19 @@ async def test_with_async_transaction(test_async_db_url):
     """Test the async transaction context manager."""
     engine = create_async_engine(test_async_db_url)
     
-    # Create tables
+    # Create tables specifically for DBTestModel
     async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+        # Directly create the table - if it exists, this will be ignored
+        await conn.run_sync(lambda sync_conn: 
+            sync_conn.execute(sqlalchemy.text(
+                "CREATE TABLE IF NOT EXISTS db_test_models ("
+                "test_id TEXT PRIMARY KEY, "
+                "name TEXT NOT NULL, "
+                "description TEXT, "
+                "created_at TEXT, "
+                "updated_at TEXT)"
+            ))
+        )
     
     with patch('pygovpub.core.database.get_async_engine', return_value=engine):
         # Test successful transaction

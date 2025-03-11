@@ -13,7 +13,7 @@ from pygovpub.api.cache.storage import MemoryStorage
 from pygovpub.auth.models import ApiSource
 
 
-class TestCacheStorage(MemoryStorage[Any]):
+class TrackedMemoryStorage(MemoryStorage[Any]):
     """Test storage implementation to track operations."""
     
     def __init__(self, max_items: int = 1000):
@@ -37,15 +37,20 @@ class TestCacheStorage(MemoryStorage[Any]):
         return super().clear()
 
 
-def test_cache_manager_initialization():
+@pytest.fixture
+def tracked_storage():
+    """Fixture that provides a TrackedMemoryStorage instance."""
+    return TrackedMemoryStorage()
+
+
+def test_cache_manager_initialization(tracked_storage):
     """Test CacheManager initialization."""
     # Create with defaults
     manager = CacheManager()
     assert manager.enabled
     
     # Create with custom storage and disabled
-    storage = TestCacheStorage()
-    manager_custom = CacheManager(storage=storage, enabled=False)
+    manager_custom = CacheManager(storage=tracked_storage, enabled=False)
     assert not manager_custom.enabled
 
 

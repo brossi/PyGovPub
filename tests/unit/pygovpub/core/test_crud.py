@@ -35,6 +35,11 @@ class TestCrudModel(BaseTable, table=True):
     name: str
     description: Optional[str] = None
     is_active: bool = True
+    
+    # Avoid the __init__ constructor warning
+    model_config = {
+        "arbitrary_types_allowed": True
+    }
 
 
 @pytest.fixture

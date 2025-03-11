@@ -7,12 +7,18 @@ Tests are skipped if PostgreSQL is not available.
 
 import pytest
 from typing import Dict, List, Optional, Union, Any
-from sqlalchemy import text
+from sqlalchemy import text, MetaData
 from sqlmodel import SQLModel, Field, Session, select
 
+# Create a separate metadata instance for this test to avoid conflicts
+test_metadata = MetaData()
+
+# Define the test model in the global scope with isolated metadata
 class MultiDBTestModel(SQLModel, table=True):
     """Model for database testing operations across multiple database types."""
     
+    # Use explicit metadata to avoid conflicts with other models
+    metadata = test_metadata
     __tablename__ = "multi_db_test_models"
     
     id: int = Field(primary_key=True)
@@ -23,13 +29,13 @@ class MultiDBTestModel(SQLModel, table=True):
 @pytest.mark.parametrize('any_db_engine', ['sqlite'], indirect=True)
 def test_sqlite_operations(any_db_engine):
     """Test that basic operations work with SQLite."""
-    # Create tables
-    SQLModel.metadata.create_all(any_db_engine)
+    # Create tables using the isolated test_metadata
+    test_metadata.create_all(any_db_engine)
     
     # Create a session
     with Session(any_db_engine) as session:
-        # Create a test model
-        model = MultiDBTestModel(id=1, name="SQLite Test", description="Testing with SQLite")
+        # Create a test model with a specific ID to avoid conflicts
+        model = MultiDBTestModel(id=101, name="SQLite Test", description="Testing with SQLite")
         session.add(model)
         session.commit()
         
@@ -38,7 +44,7 @@ def test_sqlite_operations(any_db_engine):
         
         # Verify the result
         assert result is not None
-        assert result.id == 1
+        assert result.id == 101
         assert result.name == "SQLite Test"
         assert result.description == "Testing with SQLite"
 
@@ -48,13 +54,13 @@ def test_postgres_operations(any_db_engine):
     """Test that basic operations work with PostgreSQL."""
     # This test will be skipped if PostgreSQL is not available
     
-    # Create tables
-    SQLModel.metadata.create_all(any_db_engine)
+    # Create tables using the isolated test_metadata
+    test_metadata.create_all(any_db_engine)
     
     # Create a session
     with Session(any_db_engine) as session:
-        # Create a test model
-        model = MultiDBTestModel(id=1, name="PostgreSQL Test", description="Testing with PostgreSQL")
+        # Create a test model with a specific ID to avoid conflicts
+        model = MultiDBTestModel(id=201, name="PostgreSQL Test", description="Testing with PostgreSQL")
         session.add(model)
         session.commit()
         
@@ -63,7 +69,7 @@ def test_postgres_operations(any_db_engine):
         
         # Verify the result
         assert result is not None
-        assert result.id == 1
+        assert result.id == 201
         assert result.name == "PostgreSQL Test"
         assert result.description == "Testing with PostgreSQL"
 
@@ -74,11 +80,11 @@ def test_sqlite_session_operations(any_db_session):
     # Get the engine from the session
     engine = any_db_session.get_bind()
     
-    # Create tables
-    SQLModel.metadata.create_all(engine)
+    # Create tables using the isolated test_metadata
+    test_metadata.create_all(engine)
     
-    # Create a test model
-    model = MultiDBTestModel(id=1, name="SQLite Session Test", description="Testing with SQLite Session")
+    # Create a test model with a different ID to avoid conflicts
+    model = MultiDBTestModel(id=2, name="SQLite Session Test", description="Testing with SQLite Session")
     any_db_session.add(model)
     any_db_session.commit()
     
@@ -87,7 +93,7 @@ def test_sqlite_session_operations(any_db_session):
     
     # Verify the result
     assert result is not None
-    assert result.id == 1
+    assert result.id == 2
     assert result.name == "SQLite Session Test"
     assert result.description == "Testing with SQLite Session"
 
@@ -100,11 +106,11 @@ def test_postgres_session_operations(any_db_session):
     # Get the engine from the session
     engine = any_db_session.get_bind()
     
-    # Create tables
-    SQLModel.metadata.create_all(engine)
+    # Create tables using the isolated test_metadata
+    test_metadata.create_all(engine)
     
-    # Create a test model
-    model = MultiDBTestModel(id=1, name="PostgreSQL Session Test", description="Testing with PostgreSQL Session")
+    # Create a test model with a different ID to avoid conflicts
+    model = MultiDBTestModel(id=3, name="PostgreSQL Session Test", description="Testing with PostgreSQL Session")
     any_db_session.add(model)
     any_db_session.commit()
     
@@ -113,6 +119,6 @@ def test_postgres_session_operations(any_db_session):
     
     # Verify the result
     assert result is not None
-    assert result.id == 1
+    assert result.id == 3
     assert result.name == "PostgreSQL Session Test"
     assert result.description == "Testing with PostgreSQL Session"
