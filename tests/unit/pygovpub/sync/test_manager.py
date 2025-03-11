@@ -14,7 +14,10 @@ from pygovpub.events.event_types import (
     Event, EventCategory, EventType, EventPayload,
     DocumentPublishedPayload, DocumentUpdatedPayload
 )
-from pygovpub.sync.manager import SyncManager, SyncStatus, get_sync_manager
+from pygovpub.sync.manager import (
+    SyncManager, SyncStatus, get_sync_manager,
+    ConflictResolutionStrategy, ConflictType, FieldConflict
+)
 from pygovpub.sync.tracker import EntityTracker
 
 
@@ -628,3 +631,372 @@ class TestSyncManager:
         # Verify it's the same instance
         assert manager1 is manager2
         assert isinstance(manager1, SyncManager)
+        
+    async def test_detect_bill_conflicts(self, sync_manager):
+        """Test detection of conflicts in bill data."""
+        # Create test bill data with conflicts
+        congress_bill_data = {
+            "congress": 117,
+            "type": "hr",
+            "number": 1234,
+            "title": "Test Bill from Congress",
+            "introducedDate": "2023-03-01",
+            "status": "enacted",
+            "sponsors": [
+                {
+                    "bioguideId": "A000001",
+                    "fullName": "Representative Test",
+                }
+            ],
+            "actions": [
+                {"actionDate": "2023-03-01", "text": "Introduced in House"},
+                {"actionDate": "2023-04-01", "text": "Passed House"},
+                {"actionDate": "2023-05-01", "text": "Passed Senate"},
+                {"actionDate": "2023-06-01", "text": "Signed by President"}
+            ]
+        }
+        
+        govinfo_bill_data = {
+            "congress": 117,
+            "type": "hr",
+            "number": 1234,
+            "title": "Test Bill from GovInfo",  # Title conflict
+            "introducedDate": "2023-03-02",  # Date conflict
+            "status": "introduced",  # Status conflict (semantic contradiction)
+            "sponsors": [
+                {
+                    "bioguideId": "B000002",  # Sponsor conflict
+                    "fullName": "Different Representative",
+                }
+            ],
+            "actions": [
+                {"actionDate": "2023-03-01", "text": "Introduced in House"}
+                # Fewer actions (temporal inconsistency)
+            ]
+        }
+        
+        # Create source data
+        sources = [
+            {
+                "source": ApiSource.CONGRESS,
+                "event_id": uuid4(),
+                "timestamp": datetime.utcnow(),
+                "data": congress_bill_data
+            },
+            {
+                "source": ApiSource.GOVINFO,
+                "event_id": uuid4(),
+                "timestamp": datetime.utcnow(),
+                "data": govinfo_bill_data
+            }
+        ]
+        
+        # Detect conflicts
+        conflicts = sync_manager._detect_bill_conflicts("117hr1234", sources)
+        
+        # Verify conflicts detected
+        assert len(conflicts) >= 4  # We expect at least 4 conflicts
+        
+        # Check for title conflict
+        title_conflict = next((c for c in conflicts if c.field_path == "bill.title"), None)
+        assert title_conflict is not None
+        assert title_conflict.conflict_type == ConflictType.VALUE_MISMATCH
+        assert ApiSource.CONGRESS in title_conflict.values
+        assert ApiSource.GOVINFO in title_conflict.values
+        assert title_conflict.values[ApiSource.CONGRESS] == "Test Bill from Congress"
+        assert title_conflict.values[ApiSource.GOVINFO] == "Test Bill from GovInfo"
+        
+        # Check for date conflict
+        date_conflict = next((c for c in conflicts if c.field_path == "bill.introducedDate"), None)
+        assert date_conflict is not None
+        assert date_conflict.conflict_type == ConflictType.VALUE_MISMATCH
+        
+        # Check for status conflict (semantic contradiction)
+        status_conflict = next((c for c in conflicts if c.field_path == "bill.status"), None)
+        assert status_conflict is not None
+        assert status_conflict.conflict_type == ConflictType.SEMANTIC_CONTRADICTION
+        
+        # Check for sponsor conflict
+        sponsor_conflict = next((c for c in conflicts if c.field_path == "bill.sponsor"), None)
+        assert sponsor_conflict is not None
+        assert sponsor_conflict.conflict_type == ConflictType.REFERENCE_INCONSISTENCY
+        
+        # Check for actions conflict (temporal inconsistency)
+        actions_conflict = next((c for c in conflicts if c.field_path == "bill.actions"), None)
+        assert actions_conflict is not None
+        assert actions_conflict.conflict_type == ConflictType.TEMPORAL_INCONSISTENCY
+        
+    async def test_detect_document_conflicts(self, sync_manager):
+        """Test detection of conflicts in document data."""
+        # Create test document data with conflicts
+        congress_doc_data = {
+            "packageId": "BILLS-117hr1234ih",
+            "title": "Document from Congress",
+            "dateIssued": "2023-03-01",
+            "collectionCode": "BILLS"
+        }
+        
+        govinfo_doc_data = {
+            "packageId": "BILLS-117hr1234ih",
+            "title": "Document from GovInfo",  # Title conflict
+            "dateIssued": "2023-03-02",  # Date conflict
+            "collectionCode": "BILLS"
+        }
+        
+        # Create source data
+        sources = [
+            {
+                "source": ApiSource.CONGRESS,
+                "event_id": uuid4(),
+                "timestamp": datetime.utcnow(),
+                "data": congress_doc_data
+            },
+            {
+                "source": ApiSource.GOVINFO,
+                "event_id": uuid4(),
+                "timestamp": datetime.utcnow(),
+                "data": govinfo_doc_data
+            }
+        ]
+        
+        # Detect conflicts
+        conflicts = sync_manager._detect_document_conflicts("BILLS-117hr1234ih", sources)
+        
+        # Verify conflicts detected
+        assert len(conflicts) >= 2  # We expect at least 2 conflicts
+        
+        # Check for title conflict
+        title_conflict = next((c for c in conflicts if c.field_path == "document.title"), None)
+        assert title_conflict is not None
+        assert title_conflict.conflict_type == ConflictType.VALUE_MISMATCH
+        assert ApiSource.CONGRESS in title_conflict.values
+        assert ApiSource.GOVINFO in title_conflict.values
+        assert title_conflict.values[ApiSource.CONGRESS] == "Document from Congress"
+        assert title_conflict.values[ApiSource.GOVINFO] == "Document from GovInfo"
+        
+        # Check for date conflict
+        date_conflict = next((c for c in conflicts if c.field_path == "document.dateIssued"), None)
+        assert date_conflict is not None
+        assert date_conflict.conflict_type == ConflictType.VALUE_MISMATCH
+        
+    async def test_resolve_conflicts(self, sync_manager):
+        """Test conflict resolution using different strategies."""
+        # Create test conflicts
+        title_conflict = FieldConflict(
+            field_path="bill.title",
+            conflict_type=ConflictType.VALUE_MISMATCH,
+            values={
+                ApiSource.CONGRESS: "Title from Congress",
+                ApiSource.GOVINFO: "Title from GovInfo"
+            },
+            description="Different bill titles"
+        )
+        
+        date_conflict = FieldConflict(
+            field_path="bill.latest_action_date",
+            conflict_type=ConflictType.TEMPORAL_INCONSISTENCY,
+            values={
+                ApiSource.CONGRESS: "2023-06-01",
+                ApiSource.GOVINFO: "2023-05-01"
+            },
+            description="Different latest action dates"
+        )
+        
+        actions_conflict = FieldConflict(
+            field_path="bill.actions",
+            conflict_type=ConflictType.TEMPORAL_INCONSISTENCY,
+            values={
+                ApiSource.CONGRESS: [
+                    {"actionDate": "2023-03-01", "text": "Introduced"},
+                    {"actionDate": "2023-04-01", "text": "Passed House"}
+                ],
+                ApiSource.GOVINFO: [
+                    {"actionDate": "2023-03-01", "text": "Introduced"},
+                    {"actionDate": "2023-05-01", "text": "Passed Senate"}
+                ]
+            },
+            description="Different action sets"
+        )
+        
+        conflicts = [title_conflict, date_conflict, actions_conflict]
+        
+        # Resolve conflicts
+        resolution_results = await sync_manager._resolve_conflicts(
+            entity_type="bill",
+            entity_id="117hr1234",
+            conflicts=conflicts
+        )
+        
+        # Verify results
+        assert resolution_results["total_count"] == 3
+        assert resolution_results["resolved_count"] >= 2  # At least 2 should be resolved
+        assert resolution_results["status"] in ["resolved", "partial"]
+        
+        # Verify individual conflict resolutions
+        # Title should be resolved by source precedence
+        assert title_conflict.resolution == "resolved"
+        assert title_conflict.resolved_value == "Title from Congress"
+        assert title_conflict.resolution_strategy == ConflictResolutionStrategy.SOURCE_PRECEDENCE
+        
+        # Actions should be resolved by field merge
+        assert actions_conflict.resolution == "resolved"
+        assert len(actions_conflict.resolved_value) == 4  # Combined actions
+        
+    async def test_verify_consistency_with_conflicts(self, sync_manager, event_manager):
+        """Test consistency verification that detects and resolves conflicts."""
+        # Create test bill data with conflicts
+        congress_bill_data = {
+            "congress": 117,
+            "type": "hr",
+            "number": 1234,
+            "title": "Test Bill from Congress",
+            "introducedDate": "2023-03-01",
+            "status": "enacted"
+        }
+        
+        govinfo_bill_data = {
+            "congress": 117,
+            "type": "hr",
+            "number": 1234,
+            "title": "Test Bill from GovInfo",  # Title conflict
+            "introducedDate": "2023-03-02",  # Date conflict
+            "status": "introduced"  # Status conflict
+        }
+        
+        # Create source data
+        sources = [
+            {
+                "source": ApiSource.CONGRESS,
+                "event_id": uuid4(),
+                "timestamp": datetime.utcnow(),
+                "data": congress_bill_data
+            },
+            {
+                "source": ApiSource.GOVINFO,
+                "event_id": uuid4(),
+                "timestamp": datetime.utcnow(),
+                "data": govinfo_bill_data
+            }
+        ]
+        
+        # Verify consistency
+        await sync_manager._verify_consistency(
+            entity_type="bill",
+            entity_id="117hr1234",
+            sources=sources
+        )
+        
+        # Check the sync record
+        assert len(sync_manager._sync_history) == 1
+        sync_record = list(sync_manager._sync_history.values())[0]
+        
+        # Since we have conflicts, the status should be CONFLICT
+        # for any unresolvable conflicts
+        assert sync_record["status"] in [SyncStatus.COMPLETED, SyncStatus.CONFLICT]
+        
+        # Check that conflicts were detected and stored
+        assert len(sync_manager._conflict_history) == 1
+        conflict_record = list(sync_manager._conflict_history.values())[0]
+        assert conflict_record["entity_type"] == "bill"
+        assert conflict_record["entity_id"] == "117hr1234"
+        assert len(conflict_record["conflicts"]) > 0
+        
+    async def test_get_conflicts(self, sync_manager):
+        """Test retrieving conflicts for an entity."""
+        # Setup test data
+        entity_type = "bill"
+        entity_id = "117hr1234"
+        
+        # Create a test conflict in history
+        conflict_id = uuid4()
+        conflict = FieldConflict(
+            field_path="bill.title",
+            conflict_type=ConflictType.VALUE_MISMATCH,
+            values={
+                ApiSource.CONGRESS: "Title from Congress",
+                ApiSource.GOVINFO: "Title from GovInfo"
+            },
+            description="Different bill titles"
+        )
+        
+        resolution_results = {
+            "status": "partial",
+            "total_count": 1,
+            "resolved_count": 0,
+            "unresolved_count": 1
+        }
+        
+        sync_manager._conflict_history[conflict_id] = {
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "timestamp": datetime.utcnow(),
+            "conflicts": [conflict],
+            "resolutions": resolution_results
+        }
+        
+        # Get conflicts
+        conflicts = await sync_manager.get_conflicts(
+            entity_type=entity_type,
+            entity_id=entity_id
+        )
+        
+        # Verify results
+        assert len(conflicts) == 1
+        assert conflicts[0]["conflict_id"] == conflict_id
+        assert len(conflicts[0]["conflicts"]) == 1
+        assert conflicts[0]["conflicts"][0] is conflict
+        
+    async def test_resolve_conflict_manually(self, sync_manager):
+        """Test manual resolution of a conflict."""
+        # Setup test data
+        entity_type = "bill"
+        entity_id = "117hr1234"
+        field_path = "bill.title"
+        
+        # Create a test conflict in history
+        conflict_id = uuid4()
+        conflict = FieldConflict(
+            field_path=field_path,
+            conflict_type=ConflictType.VALUE_MISMATCH,
+            values={
+                ApiSource.CONGRESS: "Title from Congress",
+                ApiSource.GOVINFO: "Title from GovInfo"
+            },
+            description="Different bill titles"
+        )
+        conflict.resolution = "unresolved"
+        
+        resolution_results = {
+            "status": "partial",
+            "total_count": 1,
+            "resolved_count": 0,
+            "unresolved_count": 1,
+            "resolution_strategies": {}
+        }
+        
+        sync_manager._conflict_history[conflict_id] = {
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "timestamp": datetime.utcnow(),
+            "conflicts": [conflict],
+            "resolutions": resolution_results
+        }
+        
+        # Resolve the conflict manually
+        resolved_value = "Manually Resolved Title"
+        success = await sync_manager.resolve_conflict_manually(
+            conflict_id=conflict_id,
+            field_path=field_path,
+            resolved_value=resolved_value
+        )
+        
+        # Verify results
+        assert success is True
+        assert conflict.resolution == "manual"
+        assert conflict.resolved_value == resolved_value
+        assert conflict.resolution_strategy == ConflictResolutionStrategy.MANUAL
+        
+        # Check that resolution statistics were updated
+        assert resolution_results["resolved_count"] == 1
+        assert resolution_results["unresolved_count"] == 0
+        assert resolution_results["status"] == "resolved"
