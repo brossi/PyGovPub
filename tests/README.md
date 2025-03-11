@@ -7,10 +7,65 @@ This directory contains the test suite for the PyGovPub project. The testing fra
 - `tests/` - Root test directory
   - `unit/` - Unit tests for individual components
   - `integration/` - Tests of component interactions
+    - `auth/` - Authentication integration tests
+    - `logging/` - Logging system integration tests
+    - `search/` - Search functionality integration tests
   - `performance/` - Load and memory tests
   - `simple/` - Basic smoke tests
   - `fixtures/` - Test data and fixtures
   - `conftest.py` - PyTest configuration and fixtures
+
+## Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=pygovpub
+
+# Run specific test modules
+pytest tests/unit/
+pytest tests/integration/search/
+```
+
+## Warning Management
+
+PyGovPub uses pytest's warning management system to handle warnings during testing. This helps identify deprecated features, potential issues, and improves test quality.
+
+### Warning Configuration
+
+Warning configuration is defined in `pyproject.toml`:
+
+```toml
+[tool.pytest.ini_options]
+filterwarnings = [
+    "error::DeprecationWarning",
+    "error::PendingDeprecationWarning",
+    "ignore::DeprecationWarning:pkg_resources.*",
+    "ignore::DeprecationWarning:pydantic.*",
+]
+```
+
+### Recording Warnings
+
+The `warning_recorder` fixture can be used to record and analyze warnings during tests:
+
+```python
+def test_example(warning_recorder):
+    # Test code that might generate warnings
+    result = some_function()
+    
+    # Check for unexpected warnings
+    assert len(warning_recorder) == 0, f"Unexpected warnings: {warning_recorder}"
+```
+
+### Common Warning Patterns
+
+1. **Pydantic V2 Warnings**: These are ignored by default as we transition to the new API
+2. **SQLAlchemy Deprecation Warnings**: These should be fixed promptly
+3. **RuntimeWarnings**: These should be addressed during development
+4. **asyncio Warnings**: Verify proper usage of async/await
 
 ## TODO: Integrated Testing Dashboard
 
