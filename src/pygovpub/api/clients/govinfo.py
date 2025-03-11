@@ -329,6 +329,168 @@ class GovInfoClient(BaseApiClient):
         # Construct FR package ID
         return f"FR-{date_str}_{fr_doc_number}"
     
+    # CFR and Court Opinion specific methods
+    
+    async def get_cfr_titles(self) -> Dict[str, Any]:
+        """Get list of CFR titles.
+        
+        Returns:
+            Dictionary with CFR titles information
+            
+        Raises:
+            ApiError: If request fails
+        """
+        endpoint = "/collections/CFR/titles"
+        
+        # This is a placeholder for a real API call
+        # In a real implementation, we would make an API call to get CFR titles
+        # For now, return a sample response
+        sample_response = {
+            "titles": [
+                {
+                    "number": 1,
+                    "name": "General Provisions",
+                    "chapters": [{"chapter_number": "I", "chapter_name": "Administrative Committee of the Federal Register"}]
+                },
+                {
+                    "number": 2,
+                    "name": "Grants and Agreements",
+                    "chapters": [{"chapter_number": "I", "chapter_name": "Office of Management and Budget Guidance"}]
+                },
+                {
+                    "number": 3,
+                    "name": "The President",
+                    "chapters": [{"chapter_number": "I", "chapter_name": "Executive Office of the President"}]
+                },
+                {
+                    "number": 40,
+                    "name": "Protection of Environment",
+                    "chapters": [{"chapter_number": "I", "chapter_name": "Environmental Protection Agency"}]
+                },
+                {
+                    "number": 42, 
+                    "name": "Public Health",
+                    "chapters": [{"chapter_number": "I", "chapter_name": "Public Health Service"}]
+                },
+                {
+                    "number": 50,
+                    "name": "Wildlife and Fisheries",
+                    "chapters": [{"chapter_number": "I", "chapter_name": "United States Fish and Wildlife Service"}]
+                }
+            ]
+        }
+        
+        # In a real implementation, we would validate the response
+        # For now, return the sample response
+        return sample_response
+    
+    async def get_cfr_title(
+        self,
+        title_number: int,
+        year: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Get specific CFR title information.
+        
+        Args:
+            title_number: CFR title number (1-50)
+            year: Optional year for the CFR edition
+            
+        Returns:
+            Dictionary with CFR title information
+            
+        Raises:
+            ApiError: If request fails
+        """
+        # Validate title number
+        if title_number < 1 or title_number > 50:
+            raise GovInfoApiError(
+                f"Invalid CFR title number: {title_number}. Must be between 1 and 50.",
+                status_code=400,
+                endpoint=f"/collections/CFR/titles/{title_number}"
+            )
+        
+        # This is a placeholder for a real API call
+        # In a real implementation, we would make an API call to get CFR title information
+        # For now, return sample data based on the title number
+        
+        # Sample title data for common titles
+        title_data = {
+            1: {"number": 1, "name": "General Provisions"},
+            2: {"number": 2, "name": "Grants and Agreements"},
+            3: {"number": 3, "name": "The President"},
+            40: {"number": 40, "name": "Protection of Environment"},
+            42: {"number": 42, "name": "Public Health"},
+            50: {"number": 50, "name": "Wildlife and Fisheries"}
+        }
+        
+        # Get title data or generate fallback
+        title_info = title_data.get(title_number, {"number": title_number, "name": f"Title {title_number}"})
+        
+        # Add chapters data
+        title_info["chapters"] = [
+            {"chapter_number": "I", "chapter_name": "Primary Chapter"},
+            {"chapter_number": "II", "chapter_name": "Secondary Chapter"}
+        ]
+        
+        # Add year information if provided
+        if year:
+            title_info["year"] = year
+        
+        return title_info
+    
+    async def get_courts(self) -> Dict[str, Any]:
+        """Get list of courts with available opinions.
+        
+        Returns:
+            Dictionary with courts information
+            
+        Raises:
+            ApiError: If request fails
+        """
+        endpoint = "/collections/USCOURTS/courts"
+        
+        # This is a placeholder for a real API call
+        # In a real implementation, we would make an API call to get courts information
+        # For now, return a sample response
+        sample_response = {
+            "courts": [
+                {
+                    "code": "SCOTUS",
+                    "name": "Supreme Court of the United States",
+                    "opinionCount": 1245
+                },
+                {
+                    "code": "CA1",
+                    "name": "United States Court of Appeals for the First Circuit",
+                    "opinionCount": 3456
+                },
+                {
+                    "code": "CA2",
+                    "name": "United States Court of Appeals for the Second Circuit",
+                    "opinionCount": 5678
+                },
+                {
+                    "code": "CA9",
+                    "name": "United States Court of Appeals for the Ninth Circuit",
+                    "opinionCount": 9876
+                },
+                {
+                    "code": "CADC",
+                    "name": "United States Court of Appeals for the District of Columbia Circuit",
+                    "opinionCount": 4321
+                },
+                {
+                    "code": "CAFC",
+                    "name": "United States Court of Appeals for the Federal Circuit",
+                    "opinionCount": 3210
+                }
+            ]
+        }
+        
+        # In a real implementation, we would validate the response
+        # For now, return the sample response
+        return sample_response
+    
     # Transformation methods
     
     def _transform_collections_response(self, response: Dict[str, Any]) -> List[Collection]:

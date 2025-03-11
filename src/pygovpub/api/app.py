@@ -219,11 +219,14 @@ def setup_routers():
         bills_router,
         committees_router,
         documents_router,
-        members_router
+        members_router,
+        cfr_router,
+        court_opinions_router
     )
     
     # Add dependency to each router
-    for router in [bills_router, committees_router, documents_router, members_router]:
+    for router in [bills_router, committees_router, documents_router, members_router, 
+                  cfr_router, court_opinions_router]:
         for route in router.routes:
             if hasattr(route, "dependant"):
                 # Add the get_api_router dependency if it's not already there
@@ -245,6 +248,8 @@ def setup_routers():
     app.include_router(documents_router)
     app.include_router(members_router)
     app.include_router(webhooks_router)
+    app.include_router(cfr_router)
+    app.include_router(court_opinions_router)
 
 # Set up the routers
 setup_routers()
@@ -266,6 +271,8 @@ async def root():
             "documents": "/documents",
             "members": "/members",
             "webhooks": "/webhooks",
+            "cfr": "/cfr",
+            "court_opinions": "/court-opinions",
         }
     }
 
