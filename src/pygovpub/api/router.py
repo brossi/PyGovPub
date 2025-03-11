@@ -33,6 +33,15 @@ class ApiRouter:
         """Initialize the API router."""
         self.clients = {}
         self._initialize_routing_rules()
+        
+    def register_client(self, source: ApiSource, client: Any) -> None:
+        """Register an API client with the router.
+        
+        Args:
+            source: API source
+            client: API client
+        """
+        self.clients[source] = client
     
     def _initialize_routing_rules(self):
         """Initialize routing rules for different request types."""

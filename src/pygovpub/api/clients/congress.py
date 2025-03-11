@@ -1079,3 +1079,34 @@ class CongressClient(BaseApiClient):
         }
         
         return chamber_map.get(chamber_str)
+        
+    async def _emit_bill_event(self, event_type: EventType, bill_data: Dict[str, Any]) -> None:
+        """Emit a bill event for testing.
+        
+        Args:
+            event_type: Type of bill event
+            bill_data: Bill data
+        """
+        congress = bill_data.get("congress")
+        bill_type = bill_data.get("type")
+        bill_number = bill_data.get("number")
+        
+        if not all([congress, bill_type, bill_number]):
+            logger.error("Missing required bill identifiers")
+            return
+            
+        # Create payload
+        payload = EventPayload(
+            event_time=datetime.utcnow(),
+            source=self.api_source,
+            source_id=f"bill/{congress}/{bill_type}{bill_number}",
+            source_url=f"https://api.congress.gov/v3/bill/{congress}/{bill_type}/{bill_number}",
+            resource_type="bill",
+            data=bill_data
+        )
+        
+        # Emit event
+        await self._event_manager.create_and_emit_event(
+            event_type=event_type,
+            payload=payload
+        )
