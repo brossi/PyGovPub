@@ -12,6 +12,7 @@ import tempfile
 import os
 import json
 import warnings
+from unittest.mock import patch, MagicMock
 from contextlib import contextmanager
 
 # Context manager to suppress specific jsonschema warnings
@@ -178,11 +179,83 @@ class TestCongressTransformer:
         # Verify source attribution
         assert result.metadata.source == ApiSource.CONGRESS
     
-    # STUB: Test transformation of a Congress.gov committees response
-    # This stub tests lines 60-75 in transformers.py
+    def test_transform_congress_committees_response(self):
+        """Test transformation of a Congress.gov committees response."""
+        # Mock Congress.gov API committee response
+        congress_response = {
+            "pagination": {
+                "count": 2,
+                "nextPage": "https://api.congress.gov/v3/committee?offset=2&limit=2"
+            },
+            "request": {
+                "contentType": "application/json",
+                "format": ""
+            },
+            "results": [
+                {
+                    "name": "House Committee on Rules",
+                    "chamber": "House",
+                    "systemCode": "hsru",
+                    "url": "https://www.congress.gov/committee/house-rules/hsru",
+                    "updateDate": "2023-06-10"
+                },
+                {
+                    "name": "Senate Committee on Finance",
+                    "chamber": "Senate",
+                    "systemCode": "ssfi",
+                    "url": "https://www.congress.gov/committee/senate-finance/ssfi",
+                    "updateDate": "2023-06-15"
+                }
+            ]
+        }
+        
+        # Transform the response without mock (straight test)
+        result = transform_congress_response(
+            congress_response=congress_response, 
+            resource_type="committees"
+        )
+        
+        # Verify the transformed response
+        assert isinstance(result, ApiResponse)
+        assert result.is_success is True
+        assert result.metadata.source == ApiSource.CONGRESS
+        assert result.pagination.count == 2
+        assert result.pagination.next_page_url == "https://api.congress.gov/v3/committee?offset=2&limit=2"
+        assert len(result.data) == 2
+        
+        # Verify the data is preserved
+        assert result.data[0]["name"] == "House Committee on Rules"
+        assert result.data[0]["chamber"] == "House"
+        assert result.data[1]["name"] == "Senate Committee on Finance"
+        
+        # Verify source attribution is added
+        assert result.metadata.source == ApiSource.CONGRESS
+        
+        # Verify original update date is included (should be the most recent date)
+        source_date = datetime.strptime("2023-06-15", "%Y-%m-%d").date()
+        assert result.metadata.source_updated_at.date() == source_date
     
-    # STUB: Test transformation of a Congress.gov empty response with pagination
-    # This stub tests lines 80-95 in transformers.py
+    def test_transform_congress_completely_empty_response(self):
+        """Test transformation of a completely empty Congress.gov response."""
+        # Mock empty Congress.gov API response with no pagination and no results
+        congress_response = {
+            "request": {
+                "contentType": "application/json",
+                "format": ""
+            }
+        }
+        
+        # Transform the response
+        result = transform_congress_response(congress_response, "bills", offset=10)
+        
+        # Verify the transformed response
+        assert isinstance(result, ApiResponse)
+        assert result.is_success is True
+        assert result.metadata.source == ApiSource.CONGRESS
+        assert result.pagination.count == 0
+        assert result.pagination.total_count == 0
+        assert result.pagination.offset == 10  # Should use provided offset
+        assert result.data == []
 
 
 class TestGovInfoTransformer:
@@ -284,11 +357,71 @@ class TestGovInfoTransformer:
         # Verify source attribution
         assert result.metadata.source == ApiSource.GOVINFO
     
-    # STUB: Test transformation of a GovInfo.gov empty response
-    # This stub tests lines 150-165 in transformers.py
+    def test_transform_govinfo_empty_response(self):
+        """Test transformation of an empty GovInfo.gov response."""
+        # Mock GovInfo.gov API empty response
+        govinfo_response = {
+            "count": 0,
+            "offset": 0,
+            "pageSize": 10,
+            "nextPage": None,
+            "previousPage": None,
+            "packages": []
+        }
+        
+        # Transform the response
+        result = transform_govinfo_response(
+            govinfo_response=govinfo_response, 
+            resource_type="packages"
+        )
+        
+        # Verify the transformed response
+        assert isinstance(result, ApiResponse)
+        assert result.is_success is True
+        assert result.metadata.source == ApiSource.GOVINFO
+        assert result.pagination.count == 0
+        assert result.pagination.total_count == 0
+        assert result.pagination.offset == 0
+        assert result.pagination.limit == 10  # pageSize
+        assert result.pagination.next_page_url is None
+        assert result.pagination.previous_page_url is None
+        assert result.data == []
     
-    # STUB: Test transformation of a GovInfo.gov single item response
-    # This stub tests lines 170-185 in transformers.py
+    def test_transform_govinfo_single_item_response(self):
+        """Test transformation of a GovInfo.gov single item response."""
+        # Mock GovInfo.gov API single item response (no collections)
+        govinfo_response = {
+            "packageId": "BILLS-117hr1234ih",
+            "lastModified": "2023-01-15T10:30:00Z",
+            "packageLink": "https://api.govinfo.gov/packages/BILLS-117hr1234ih/summary",
+            "title": "A Single Bill",
+            "congress": 117,
+            "dateIssued": "2023-01-10",
+            "details": {
+                "sponsor": "Rep. Smith, John",
+                "billType": "HR"
+            }
+        }
+        
+        # Transform the response
+        result = transform_govinfo_response(govinfo_response, "bill")
+        
+        # Verify the transformed response
+        assert isinstance(result, ApiResponse)
+        assert result.is_success is True
+        assert result.metadata.source == ApiSource.GOVINFO
+        assert result.pagination.count == 1  # Single item
+        assert len(result.data) == 1
+        
+        # Verify the data contains the entire response as a single item
+        assert result.data[0]["packageId"] == "BILLS-117hr1234ih"
+        assert result.data[0]["title"] == "A Single Bill"
+        assert result.data[0]["congress"] == 117
+        assert "details" in result.data[0]
+        
+        # Verify source metadata was extracted
+        source_date = datetime.strptime("2023-01-15T10:30:00Z", "%Y-%m-%dT%H:%M:%SZ")
+        assert result.metadata.source_updated_at == source_date
 
 
 class TestErrorResponseCreation:
@@ -341,6 +474,46 @@ class TestErrorResponseCreation:
         assert result.error.status_code == 404
         assert result.error.error_code == "RESOURCE_NOT_FOUND"
         assert result.error.details == {"resource_id": "123", "resource_type": "bill"}
+    
+    def test_create_error_response_with_request_metadata(self):
+        """Test creating an error response with request metadata."""
+        # Create error response with request ID and processing time
+        result = create_error_response(
+            message="Service unavailable",
+            status_code=503,
+            source=ApiSource.INTERNAL,
+            error_code="SERVICE_DOWN",
+            request_id="req-12345",
+            processing_time_ms=125
+        )
+        
+        # Verify error response
+        assert isinstance(result, ApiResponse)
+        assert result.is_success is False
+        assert result.metadata.source == ApiSource.INTERNAL
+        assert result.pagination is None
+        assert result.data is None
+        assert result.error is not None
+        assert result.error.message == "Service unavailable"
+        assert result.error.status_code == 503
+        assert result.error.error_code == "SERVICE_DOWN"
+        assert result.metadata.request_id == "req-12345"
+        assert result.metadata.processing_time_ms == 125
+    
+    def test_create_error_response_default_values(self):
+        """Test creating an error response with default values."""
+        # Create error response with no parameters (should use defaults)
+        result = create_error_response()
+        
+        # Verify error response
+        assert isinstance(result, ApiResponse)
+        assert result.is_success is False
+        assert result.metadata.source == ApiSource.INTERNAL  # Default source
+        assert result.pagination is None
+        assert result.data is None
+        assert result.error is not None
+        assert result.error.message == "An unknown error occurred"  # Default message
+        assert result.error.status_code == 500  # Default status code
 
 
 class TestSchemaIntegration:
@@ -439,3 +612,70 @@ class TestSchemaIntegration:
             finally:
                 # Restore the original default monitor
                 pygovpub.core.schema_monitor.default_monitor = original_monitor
+    
+    def test_schema_validation_log_warnings(self):
+        """Test that schema validation logs warnings."""
+        # Mock Logger
+        with patch('pygovpub.models.transformers.logger') as mock_logger:
+            # Mock schema validation that reports invalid schema
+            with patch('pygovpub.models.transformers.validate_schema') as mock_validate:
+                # Configure mock to return invalid schema
+                mock_validate.return_value = (False, [])
+                
+                # Sample Congress.gov API response
+                congress_response = {
+                    "pagination": {"count": 1},
+                    "results": [{"congress": 117, "type": "hr", "number": "1"}]
+                }
+                
+                # Transform the response
+                transform_congress_response(
+                    congress_response=congress_response,
+                    resource_type="bill",
+                    endpoint="v3/bill"
+                )
+                
+                # Verify warning was logged
+                mock_logger.warning.assert_called_with(
+                    "Congress API response failed schema validation for v3/bill"
+                )
+    
+    def test_schema_validation_log_breaking_changes(self):
+        """Test that schema validation logs breaking changes."""
+        # Create a mock SchemaChange with is_breaking=True
+        from pygovpub.core.schema_monitor import SchemaChange
+        
+        breaking_change = SchemaChange(
+            api_source=ApiSource.GOVINFO,
+            endpoint="collections/bills",
+            change_type="type_changed",
+            field_path="results[0].congress",
+            old_value="string",
+            new_value="integer",
+            is_breaking=True
+        )
+        
+        # Mock Logger
+        with patch('pygovpub.models.transformers.logger') as mock_logger:
+            # Mock schema validation that reports breaking changes
+            with patch('pygovpub.models.transformers.validate_schema') as mock_validate:
+                # Configure mock to return valid schema but with breaking changes
+                mock_validate.return_value = (True, [breaking_change])
+                
+                # Sample GovInfo.gov API response
+                govinfo_response = {
+                    "count": 1,
+                    "packages": [{"packageId": "BILLS-117hr1234ih"}]
+                }
+                
+                # Transform the response
+                transform_govinfo_response(
+                    govinfo_response=govinfo_response,
+                    resource_type="packages",
+                    endpoint="collections/bills"
+                )
+                
+                # Verify warning was logged about breaking changes
+                mock_logger.warning.assert_called_with(
+                    "Breaking schema changes detected in GovInfo API response for collections/bills"
+                )
