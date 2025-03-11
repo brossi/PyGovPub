@@ -4,7 +4,7 @@ Unit tests for the synchronization manager.
 
 import asyncio
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import UUID, uuid4
 
@@ -14,7 +14,7 @@ from pygovpub.events.event_types import (
     Event, EventCategory, EventType, EventPayload,
     DocumentPublishedPayload, DocumentUpdatedPayload
 )
-from pygovpub.sync.manager import SyncManager, SyncStatus
+from pygovpub.sync.manager import SyncManager, SyncStatus, get_sync_manager
 from pygovpub.sync.tracker import EntityTracker
 
 
@@ -38,9 +38,10 @@ class TestSyncManager:
     @pytest.fixture
     def sync_manager(self, event_manager, entity_tracker):
         """Create a sync manager with mocked dependencies."""
-        with patch('pygovpub.sync.manager.EntityTracker', return_value=entity_tracker):
+        # Create a manager with the event manager and entity tracker mocked
+        with patch('pygovpub.sync.manager.get_event_manager', return_value=event_manager):
             manager = SyncManager()
-            # Manually inject the mocked entity tracker
+            # Replace the entity tracker with our mock
             manager._entity_tracker = entity_tracker
             return manager
     
@@ -147,6 +148,68 @@ class TestSyncManager:
         assert call_args["entity_id"] == document_data["packageId"]
         assert call_args["source"] == ApiSource.GOVINFO
         assert call_args["data"] == document_data
+    
+    async def test_handle_document_event_with_related_bills(self, sync_manager, event_manager, entity_tracker, document_data):
+        """Test handling a document event with related bills."""
+        # Reset mock
+        entity_tracker.reset_mock()
+        
+        # Setup entity tracker to return bill updates for consistency check
+        bill_update = {
+            "source": ApiSource.CONGRESS,
+            "event_id": uuid4(),
+            "timestamp": datetime.utcnow(),
+            "data": {"congress": 117, "type": "hr", "number": 1234}
+        }
+        
+        govinfo_update = {
+            "source": ApiSource.GOVINFO,
+            "event_id": uuid4(),
+            "timestamp": datetime.utcnow(),
+            "data": document_data
+        }
+        
+        # Create futures for the mock responses
+        bill_future = asyncio.Future()
+        bill_future.set_result([bill_update])
+        
+        doc_future = asyncio.Future()
+        doc_future.set_result([govinfo_update])
+        
+        # Configure get_updates to return different results for different calls
+        entity_tracker.get_updates.side_effect = lambda entity_type, entity_id, source=None: (
+            bill_future if entity_type == "bill" else doc_future
+        )
+        
+        # Create a document event with related bills
+        doc_payload = DocumentPublishedPayload(
+            event_time=datetime.utcnow(),
+            source=ApiSource.GOVINFO,
+            source_id=f"document/{document_data['packageId']}",
+            source_url=document_data.get("packageLink", ""),
+            resource_type="bill_document",
+            document_id=document_data["packageId"],
+            document_type="bill",
+            title=document_data["title"],
+            related_bills=["117hr1234"],  # Include related bill
+            data=document_data
+        )
+        
+        event = Event(
+            event_type=EventType.DOCUMENT_PUBLISHED,
+            category=EventCategory.DOCUMENT_UPDATE,
+            payload=doc_payload
+        )
+        
+        # Emit the event
+        await event_manager.emit_event(event)
+        
+        # Verify entity tracker was called for the entity update
+        assert entity_tracker.track_update.call_count == 1
+        
+        # Verify get_updates was called for both bill and document
+        # (We call it twice for each consistency check)
+        assert entity_tracker.get_updates.call_count >= 2
     
     async def test_check_bill_document_consistency(self, sync_manager, event_manager, entity_tracker, bill_data, document_data):
         """Test checking consistency between bill and document data."""
@@ -259,3 +322,309 @@ class TestSyncManager:
         assert len(status["sources"]) == 2
         assert ApiSource.CONGRESS in status["sources"]
         assert ApiSource.GOVINFO in status["sources"]
+    
+    async def test_get_sync_status_no_records(self, sync_manager):
+        """Test getting synchronization status with no records."""
+        # Clear sync history
+        sync_manager._sync_history = {}
+        
+        # Get sync status for non-existent entity
+        status = await sync_manager.get_sync_status(
+            entity_type="bill",
+            entity_id="nonexistent"
+        )
+        
+        # Verify status is None
+        assert status is None
+    
+    async def test_get_sync_status_multiple_records(self, sync_manager):
+        """Test getting synchronization status with multiple records."""
+        # Initialize sync history with two entries for the same entity
+        entity_type = "bill"
+        entity_id = "117hr1234"
+        
+        # Create an older entry
+        sync_id1 = UUID(int=0)  # Test UUID
+        older_time = datetime.utcnow() - timedelta(hours=1)
+        sync_manager._sync_history[sync_id1] = {
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "sources": [ApiSource.CONGRESS],
+            "status": SyncStatus.COMPLETED,
+            "timestamp": older_time,
+            "consistent": True
+        }
+        
+        # Create a newer entry
+        sync_id2 = UUID(int=1)  # Test UUID
+        newer_time = datetime.utcnow()
+        sync_manager._sync_history[sync_id2] = {
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "sources": [ApiSource.CONGRESS, ApiSource.GOVINFO],
+            "status": SyncStatus.COMPLETED,
+            "timestamp": newer_time,
+            "consistent": True
+        }
+        
+        # Get sync status
+        status = await sync_manager.get_sync_status(
+            entity_type=entity_type,
+            entity_id=entity_id
+        )
+        
+        # Verify status is the newer entry
+        assert status is not None
+        assert status["timestamp"] == newer_time
+        assert len(status["sources"]) == 2
+    
+    async def test_subscribe_to_events(self, sync_manager, event_manager):
+        """Test subscribing to events."""
+        # Verify the sync manager subscribed to relevant events
+        subscribers = event_manager._category_subscribers
+        
+        # Check that we have subscribers for document and bill events
+        assert EventCategory.DOCUMENT_UPDATE in subscribers
+        assert EventCategory.BILL_UPDATE in subscribers
+        
+        # There should be at least one subscriber for each category
+        assert len(subscribers[EventCategory.DOCUMENT_UPDATE]) > 0
+        assert len(subscribers[EventCategory.BILL_UPDATE]) > 0
+    
+    async def test_handle_invalid_bill_event(self, sync_manager, event_manager, entity_tracker):
+        """Test handling a bill event with invalid data."""
+        # Create a bill event with empty data dictionary
+        bill_payload = EventPayload(
+            event_time=datetime.utcnow(),
+            source=ApiSource.CONGRESS,
+            source_id="bill/117/hr1234",
+            source_url="https://api.congress.gov/v3/bill/117/hr/1234",
+            resource_type="bill",
+            data={}  # Empty data
+        )
+        
+        event = Event(
+            event_type=EventType.BILL_INTRODUCED,
+            category=EventCategory.BILL_UPDATE,
+            payload=bill_payload
+        )
+        
+        # Emit the event
+        await event_manager.emit_event(event)
+        
+        # Verify entity tracker was not called for empty data
+        entity_tracker.track_update.assert_not_called()
+        
+        # Test with missing bill identifiers
+        bill_payload.data = {"title": "Missing identifiers"}
+        
+        # Reset the event
+        event = Event(
+            event_type=EventType.BILL_INTRODUCED,
+            category=EventCategory.BILL_UPDATE,
+            payload=bill_payload
+        )
+        
+        await event_manager.emit_event(event)
+        entity_tracker.track_update.assert_not_called()
+    
+    async def test_handle_invalid_document_event(self, sync_manager, event_manager, entity_tracker):
+        """Test handling a document event with invalid data."""
+        # Create a document event with invalid payload type
+        doc_payload = EventPayload(
+            event_time=datetime.utcnow(),
+            source=ApiSource.GOVINFO,
+            source_id="document/BILLS-117hr1234ih",
+            source_url="https://api.govinfo.gov/packages/BILLS-117hr1234ih",
+            resource_type="document",
+            data={"id": "BILLS-117hr1234ih"}
+        )
+        
+        event = Event(
+            event_type=EventType.DOCUMENT_PUBLISHED,
+            category=EventCategory.DOCUMENT_UPDATE,
+            payload=doc_payload
+        )
+        
+        # Emit the event
+        await event_manager.emit_event(event)
+        
+        # Verify entity tracker was not called (payload is not DocumentPublishedPayload)
+        entity_tracker.track_update.assert_not_called()
+    
+    async def test_check_bill_document_consistency_cross_source(self, sync_manager, entity_tracker):
+        """Test consistency check with matching entities from both sources."""
+        # Reset entity tracker mock
+        entity_tracker.reset_mock()
+        entity_tracker.get_updates.reset_mock()
+        
+        # Setup entity tracker to return specific sources for each entity
+        bill_update = {
+            "source": ApiSource.CONGRESS,
+            "event_id": uuid4(),
+            "timestamp": datetime.utcnow(),
+            "data": {"congress": 117, "type": "hr", "number": 1234}
+        }
+        
+        doc_update = {
+            "source": ApiSource.GOVINFO,
+            "event_id": uuid4(),
+            "timestamp": datetime.utcnow(),
+            "data": {"packageId": "BILLS-117hr1234ih"}
+        }
+        
+        # Create result lists with correct source assignments
+        bill_updates = [bill_update]  # Bill update from Congress.gov
+        doc_updates = [doc_update]  # Document update from GovInfo.gov
+        
+        # Setup mocks to return the correct results
+        bill_future = asyncio.Future()
+        bill_future.set_result(bill_updates)
+        
+        doc_future = asyncio.Future()
+        doc_future.set_result(doc_updates)
+        
+        # Configure entity tracker's side effects
+        def mock_get_updates(entity_type, entity_id, source=None):
+            if entity_type == "bill":
+                return bill_future
+            elif entity_type == "document":
+                return doc_future
+            return asyncio.Future().set_result([])
+                
+        entity_tracker.get_updates.side_effect = mock_get_updates
+        
+        # Create test event for the context
+        event = MagicMock(spec=Event)
+        
+        # Now directly call the _verify_consistency method
+        await sync_manager._verify_consistency(
+            entity_type="bill",
+            entity_id="117hr1234",
+            sources=[bill_update, doc_update]  # Pass both sources directly
+        )
+        
+        # Verify a sync record was created
+        assert len(sync_manager._sync_history) == 1
+        
+        # Get the record and verify its content
+        sync_record = list(sync_manager._sync_history.values())[0]
+        assert sync_record["entity_type"] == "bill"
+        assert sync_record["entity_id"] == "117hr1234"
+        assert len(sync_record["sources"]) == 2
+        assert ApiSource.CONGRESS in sync_record["sources"]
+        assert ApiSource.GOVINFO in sync_record["sources"]
+    
+    async def test_check_bill_document_consistency_missing_data(self, sync_manager, entity_tracker):
+        """Test consistency check with missing data."""
+        # Setup entity tracker to return empty updates
+        empty_updates = []
+        future = asyncio.Future()
+        future.set_result(empty_updates)
+        entity_tracker.get_updates.return_value = future
+        
+        # Create test event for the context
+        event = MagicMock(spec=Event)
+        
+        # Call the consistency check
+        await sync_manager._check_bill_document_consistency(
+            bill_id="117hr1234",
+            document_id="BILLS-117hr1234ih",
+            event=event
+        )
+        
+        # Verify get_updates was called but no further processing occurred
+        entity_tracker.get_updates.assert_called()
+        
+        # There should be no sync history since data was missing
+        assert len(sync_manager._sync_history) == 0
+    
+    async def test_check_bill_document_consistency_single_source(self, sync_manager, entity_tracker):
+        """Test consistency check with data from only one source."""
+        # Setup entity tracker to return updates only from Congress
+        bill_update = {
+            "source": ApiSource.CONGRESS,
+            "event_id": uuid4(),
+            "timestamp": datetime.utcnow(),
+            "data": {"congress": 117, "type": "hr", "number": 1234}
+        }
+        bill_updates = [bill_update]
+        
+        # Create futures for the mock responses
+        bill_future = asyncio.Future()
+        bill_future.set_result(bill_updates)
+        
+        empty_future = asyncio.Future()
+        empty_future.set_result([])
+        
+        # Configure get_updates to return different results for different calls
+        entity_tracker.get_updates.side_effect = lambda entity_type, entity_id, source=None: (
+            bill_future if entity_type == "bill" else empty_future
+        )
+        
+        # Create test event for the context
+        event = MagicMock(spec=Event)
+        
+        # Call the consistency check
+        await sync_manager._check_bill_document_consistency(
+            bill_id="117hr1234",
+            document_id="BILLS-117hr1234ih",
+            event=event
+        )
+        
+        # Verify get_updates was called for both entities
+        assert entity_tracker.get_updates.call_count == 2
+        
+        # There should be no sync history since we only had data from one source
+        assert len(sync_manager._sync_history) == 0
+    
+    async def test_verify_consistency(self, sync_manager):
+        """Test consistency verification between sources."""
+        # Create mock source data
+        source1 = {
+            "source": ApiSource.CONGRESS,
+            "event_id": uuid4(),
+            "timestamp": datetime.utcnow(),
+            "data": {"congress": 117, "type": "hr", "number": 1234, "title": "Test Bill"}
+        }
+        
+        source2 = {
+            "source": ApiSource.GOVINFO,
+            "event_id": uuid4(),
+            "timestamp": datetime.utcnow(),
+            "data": {"packageId": "BILLS-117hr1234ih", "title": "Test Bill"}
+        }
+        
+        # Verify consistency
+        await sync_manager._verify_consistency(
+            entity_type="bill",
+            entity_id="117hr1234",
+            sources=[source1, source2]
+        )
+        
+        # Verify a sync record was created
+        assert len(sync_manager._sync_history) == 1
+        
+        # Get the record and verify its content
+        sync_record = list(sync_manager._sync_history.values())[0]
+        assert sync_record["entity_type"] == "bill"
+        assert sync_record["entity_id"] == "117hr1234"
+        assert len(sync_record["sources"]) == 2
+        assert ApiSource.CONGRESS in sync_record["sources"]
+        assert ApiSource.GOVINFO in sync_record["sources"]
+        assert sync_record["status"] == SyncStatus.COMPLETED
+        assert sync_record["consistent"] is True
+    
+    async def test_get_sync_manager_singleton(self):
+        """Test global sync manager singleton."""
+        # Reset the global instance
+        import pygovpub.sync.manager
+        pygovpub.sync.manager._sync_manager = None
+        
+        # Get the manager twice
+        manager1 = get_sync_manager()
+        manager2 = get_sync_manager()
+        
+        # Verify it's the same instance
+        assert manager1 is manager2
+        assert isinstance(manager1, SyncManager)

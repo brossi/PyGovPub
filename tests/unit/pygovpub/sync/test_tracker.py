@@ -219,6 +219,14 @@ class TestEntityTracker:
             data={"packageId": "BILLS-117hr1234ih"}
         )
         
+        await tracker.track_update(
+            entity_type="bill",
+            entity_id="117hr5678",
+            source=ApiSource.CONGRESS,
+            event_id=uuid4(),
+            data={"congress": 117, "type": "hr", "number": 5678, "title": "Another Bill"}
+        )
+        
         # Verify updates exist
         bill_updates = await tracker.get_updates(
             entity_type="bill",
@@ -232,16 +240,40 @@ class TestEntityTracker:
         )
         assert len(document_updates) == 1
         
-        # Clear history for bill
+        # Clear history for specific bill
         await tracker.clear_history(
             entity_type="bill",
             entity_id="117hr1234"
         )
         
-        # Verify bill updates are cleared
+        # Verify specific bill updates are cleared
         bill_updates = await tracker.get_updates(
             entity_type="bill",
             entity_id="117hr1234"
+        )
+        assert len(bill_updates) == 0
+        
+        # Verify other bill updates still exist
+        other_bill_updates = await tracker.get_updates(
+            entity_type="bill",
+            entity_id="117hr5678"
+        )
+        assert len(other_bill_updates) == 1
+        
+        # Verify document updates still exist
+        document_updates = await tracker.get_updates(
+            entity_type="document",
+            entity_id="BILLS-117hr1234ih"
+        )
+        assert len(document_updates) == 1
+        
+        # Clear history for specific entity type
+        await tracker.clear_history(entity_type="bill")
+        
+        # Verify all bill updates are cleared
+        bill_updates = await tracker.get_updates(
+            entity_type="bill",
+            entity_id="117hr5678"
         )
         assert len(bill_updates) == 0
         
@@ -261,3 +293,87 @@ class TestEntityTracker:
             entity_id="BILLS-117hr1234ih"
         )
         assert len(document_updates) == 0
+    
+    async def test_get_updates_nonexistent(self, tracker):
+        """Test getting updates for a nonexistent entity."""
+        # Get updates for a nonexistent entity
+        updates = await tracker.get_updates(
+            entity_type="bill",
+            entity_id="nonexistent"
+        )
+        
+        # Verify empty list is returned
+        assert isinstance(updates, list)
+        assert len(updates) == 0
+    
+    async def test_get_latest_update_nonexistent(self, tracker):
+        """Test getting the latest update for a nonexistent entity."""
+        # Get the latest update for a nonexistent entity
+        latest = await tracker.get_latest_update(
+            entity_type="bill",
+            entity_id="nonexistent"
+        )
+        
+        # Verify None is returned
+        assert latest is None
+    
+    async def test_get_latest_update_with_source(self, tracker, sample_data):
+        """Test getting the latest update for an entity with a specific source."""
+        # Track updates from different sources with different timestamps
+        entity_type = "bill"
+        entity_id = "117hr1234"
+        
+        # First update from Congress
+        await tracker.track_update(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            source=ApiSource.CONGRESS,
+            event_id=uuid4(),
+            data=sample_data
+        )
+        
+        # Introduce a delay to ensure different timestamps
+        await asyncio.sleep(0.01)
+        
+        # Second update from GovInfo (should be latest overall)
+        govinfo_event_id = uuid4()
+        await tracker.track_update(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            source=ApiSource.GOVINFO,
+            event_id=govinfo_event_id,
+            data={"packageId": f"BILLS-{entity_id}ih"}
+        )
+        
+        # Get latest update from all sources
+        latest = await tracker.get_latest_update(
+            entity_type=entity_type,
+            entity_id=entity_id
+        )
+        
+        # Verify it's the GovInfo update
+        assert latest is not None
+        assert latest["source"] == ApiSource.GOVINFO
+        
+        # Get latest update specifically from Congress
+        congress_latest = await tracker.get_latest_update(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            source=ApiSource.CONGRESS
+        )
+        
+        # Verify it's the Congress update
+        assert congress_latest is not None
+        assert congress_latest["source"] == ApiSource.CONGRESS
+    
+    async def test_get_sources_for_nonexistent_entity(self, tracker):
+        """Test getting sources for a nonexistent entity."""
+        # Get sources for a nonexistent entity
+        sources = await tracker.get_sources_for_entity(
+            entity_type="bill",
+            entity_id="nonexistent"
+        )
+        
+        # Verify empty set is returned
+        assert isinstance(sources, set)
+        assert len(sources) == 0
