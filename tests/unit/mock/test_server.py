@@ -8,6 +8,8 @@ import asyncio
 import json
 import os
 import pytest
+import tempfile
+import time
 from pathlib import Path
 from typing import Optional
 from unittest.mock import patch, MagicMock, AsyncMock, mock_open
@@ -562,3 +564,492 @@ class TestMockServer:
         with patch("asyncio.sleep") as mock_sleep:
             asyncio.run(server._simulate_latency())
             mock_sleep.assert_not_called()
+            
+    def test_check_auth(self):
+        """Test authentication checking."""
+        server = MockServer()
+        
+        # Test valid API key
+        # No exception should be raised
+        try:
+            server._check_auth("congress", "valid_key")
+        except HTTPException:
+            pytest.fail("HTTPException raised unexpectedly with valid key")
+        
+        # Test missing API key
+        with pytest.raises(HTTPException) as excinfo:
+            server._check_auth("congress", None)
+        assert excinfo.value.status_code == 401
+        assert "Missing API key" in excinfo.value.detail
+        
+        # Test with rate limits simulation
+        server.simulate_rate_limits = True
+        server.rate_limits["congress"]["remaining"] = 0  # No requests remaining
+        server.rate_limits["congress"]["reset"] = int(time.time()) + 60  # Reset in 60 seconds
+        
+        with pytest.raises(HTTPException) as excinfo:
+            server._check_auth("congress", "valid_key")
+        assert excinfo.value.status_code == 429
+        assert "Rate limit exceeded" in excinfo.value.detail
+        assert "Retry-After" in excinfo.value.headers
+        
+        # Test with rate limits but reset time in the past
+        server.rate_limits["congress"]["reset"] = int(time.time()) - 60  # Reset time in the past
+        # This should reset the rate limit and not raise an exception
+        try:
+            server._check_auth("congress", "valid_key")
+        except HTTPException:
+            pytest.fail("HTTPException raised unexpectedly after rate limit reset")
+        
+        # Verify the rate limit was reset
+        assert server.rate_limits["congress"]["remaining"] == server.rate_limits["congress"]["limit"] - 1
+        
+    @pytest.mark.asyncio
+    async def test_congress_bill_handler(self):
+        """Test the Congress.gov bill endpoint handler."""
+        server = MockServer()
+        
+        # Create a mock request
+        mock_request = MagicMock()
+        mock_request.query_params = {}
+        
+        # Test with record mode off and existing fixture
+        server.record_mode = False
+        
+        with patch.object(server, "_check_auth") as mock_check_auth:
+            with patch.object(server, "_load_fixture", return_value={"bill": {"title": "Test Bill"}}) as mock_load:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Call the bill handler
+                    result = await server._handle_congress_bill("117", "hr", "1234", mock_request, "test_key")
+                    
+                    # Verify auth was checked
+                    mock_check_auth.assert_called_once_with("congress", "test_key")
+                    
+                    # Verify latency was simulated
+                    mock_latency.assert_called_once()
+                    
+                    # Verify the fixture was loaded
+                    mock_load.assert_called_once()
+                    
+                    # Verify the result
+                    assert result == {"bill": {"title": "Test Bill"}}
+        
+        # Test with record mode on
+        server.record_mode = True
+        
+        with patch.object(server, "_check_auth") as mock_check_auth:
+            with patch.object(server, "_record_response", return_value={"bill": {"title": "Recorded Bill"}}) as mock_record:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Call the bill handler
+                    result = await server._handle_congress_bill("117", "hr", "1234", mock_request, "test_key")
+                    
+                    # Verify auth was checked
+                    mock_check_auth.assert_called_once_with("congress", "test_key")
+                    
+                    # Verify latency was simulated
+                    mock_latency.assert_called_once()
+                    
+                    # Verify the response was recorded
+                    mock_record.assert_called_once_with(
+                        "congress",
+                        "bill/117/hr/1234",
+                        mock_request
+                    )
+                    
+                    # Verify the result
+                    assert result == {"bill": {"title": "Recorded Bill"}}
+                    
+    @pytest.mark.asyncio
+    async def test_govinfo_content_handler(self):
+        """Test the GovInfo.gov package content endpoint handler."""
+        server = MockServer()
+        
+        # Create a mock request
+        mock_request = MagicMock()
+        mock_request.query_params = {"content_type": "pdf"}
+        
+        # Create temporary test files
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Create a temporary fixture file
+            fixture_dir = Path(tmp_dir) / "govinfo" / "content"
+            fixture_dir.mkdir(parents=True, exist_ok=True)
+            test_content = b"PDF test content"
+            test_path = fixture_dir / "BILLS-117hr1234enr.pdf"
+            test_path.write_bytes(test_content)
+            
+            # Set the fixture path
+            server.fixtures_path = tmp_dir
+            
+            # Test with record mode off and existing fixture
+            server.record_mode = False
+            
+            with patch.object(server, "_check_auth") as mock_check_auth:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Call the content handler
+                    response = await server._handle_govinfo_package_content(
+                        "BILLS-117hr1234enr", 
+                        mock_request, 
+                        "test_key", 
+                        content_type="pdf"
+                    )
+                    
+                    # Verify auth was checked
+                    mock_check_auth.assert_called_once_with("govinfo", "test_key", param=True)
+                    
+                    # Verify latency was simulated
+                    mock_latency.assert_called_once()
+                    
+                    # Verify response content
+                    assert response.body == test_content
+                    assert response.media_type == "application/pdf"
+            
+            # Test with non-existent fixture
+            with patch.object(server, "_check_auth") as mock_check_auth:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Create sample PDF
+                    sample_path = fixture_dir / "sample.pdf"
+                    sample_path.write_bytes(b"Sample PDF content")
+                    
+                    # Call the content handler with non-existent package
+                    response = await server._handle_govinfo_package_content(
+                        "nonexistent", 
+                        mock_request, 
+                        "test_key", 
+                        content_type="pdf"
+                    )
+                    
+                    # Verify response uses sample PDF
+                    assert response.body == b"Sample PDF content"
+                    
+            # Test with no sample PDF
+            os.unlink(fixture_dir / "sample.pdf")
+            
+            with patch.object(server, "_check_auth") as mock_check_auth:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Call the content handler with non-existent package and no sample
+                    with pytest.raises(HTTPException) as excinfo:
+                        await server._handle_govinfo_package_content(
+                            "nonexistent", 
+                            mock_request, 
+                            "test_key", 
+                            content_type="pdf"
+                        )
+                    
+                    # Verify 404 is raised
+                    assert excinfo.value.status_code == 404
+                    assert "Content not found" in excinfo.value.detail
+            
+            # Test with record mode on
+            server.record_mode = True
+            
+            # Create client response for httpx
+            mock_response = MagicMock()
+            mock_response.content = b"Recorded PDF content"
+            mock_response.headers = {"content-type": "application/pdf"}
+            
+            mock_client = MagicMock()
+            mock_client.get = AsyncMock(return_value=mock_response)
+            
+            with patch("httpx.AsyncClient", return_value=mock_client):
+                with patch.object(server, "_check_auth") as mock_check_auth:
+                    with patch.object(server, "_simulate_latency") as mock_latency:
+                        with patch("pygovpub.mock.server.config") as mock_config:
+                            # Configure mock config
+                            mock_config.apis = {
+                                "govinfo": MagicMock(
+                                    base_url="https://api.govinfo.gov",
+                                    api_key="mock_key"
+                                )
+                            }
+                            
+                            # Call the content handler in record mode
+                            response = await server._handle_govinfo_package_content(
+                                "BILLS-117hr1234enr", 
+                                mock_request, 
+                                "test_key", 
+                                content_type="pdf"
+                            )
+                            
+                            # Verify client was called
+                            mock_client.get.assert_called_once()
+                            
+                            # Verify response
+                            assert response.body == b"Recorded PDF content"
+                            assert response.media_type == "application/pdf"
+                            
+    @pytest.mark.asyncio
+    async def test_congress_amendment_handler(self):
+        """Test the Congress.gov amendment endpoint handler."""
+        server = MockServer()
+        
+        # Create a mock request
+        mock_request = MagicMock()
+        mock_request.query_params = {}
+        
+        # Test with record mode off
+        server.record_mode = False
+        
+        with patch.object(server, "_check_auth") as mock_check_auth:
+            with patch.object(server, "_load_fixture", return_value={"amendment": {"title": "Test Amendment"}}) as mock_load:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Call the amendment handler
+                    result = await server._handle_congress_amendment("117", "hamdt", "123", mock_request, "test_key")
+                    
+                    # Verify auth was checked
+                    mock_check_auth.assert_called_once_with("congress", "test_key")
+                    
+                    # Verify latency was simulated
+                    mock_latency.assert_called_once()
+                    
+                    # Verify the fixture was loaded from the correct path
+                    mock_load.assert_called_once()
+                    fixture_path = mock_load.call_args[0][0]
+                    assert "amendment" in str(fixture_path)
+                    assert "117_hamdt_123.json" in str(fixture_path)
+                    
+                    # Verify the result
+                    assert result == {"amendment": {"title": "Test Amendment"}}
+        
+    @pytest.mark.asyncio
+    async def test_congress_member_handler(self):
+        """Test the Congress.gov member endpoint handler."""
+        server = MockServer()
+        
+        # Create a mock request
+        mock_request = MagicMock()
+        mock_request.query_params = {}
+        
+        # Test with record mode off
+        server.record_mode = False
+        
+        with patch.object(server, "_check_auth") as mock_check_auth:
+            with patch.object(server, "_load_fixture", return_value={"member": {"bioguideId": "A000123"}}) as mock_load:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Call the member handler
+                    result = await server._handle_congress_member("A000123", mock_request, "test_key")
+                    
+                    # Verify auth was checked
+                    mock_check_auth.assert_called_once_with("congress", "test_key")
+                    
+                    # Verify latency was simulated
+                    mock_latency.assert_called_once()
+                    
+                    # Verify the fixture was loaded from the correct path
+                    mock_load.assert_called_once()
+                    fixture_path = mock_load.call_args[0][0]
+                    assert "member" in str(fixture_path)
+                    assert "A000123.json" in str(fixture_path)
+                    
+                    # Verify the result
+                    assert result == {"member": {"bioguideId": "A000123"}}
+                    
+    @pytest.mark.asyncio
+    async def test_congress_committee_handler(self):
+        """Test the Congress.gov committee endpoint handler."""
+        server = MockServer()
+        
+        # Create a mock request
+        mock_request = MagicMock()
+        mock_request.query_params = {}
+        
+        # Test with record mode off
+        server.record_mode = False
+        
+        with patch.object(server, "_check_auth") as mock_check_auth:
+            with patch.object(server, "_load_fixture", return_value={"committee": {"name": "Test Committee"}}) as mock_load:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Call the committee handler
+                    result = await server._handle_congress_committee("117", "house", "hsju", mock_request, "test_key")
+                    
+                    # Verify auth was checked
+                    mock_check_auth.assert_called_once_with("congress", "test_key")
+                    
+                    # Verify latency was simulated
+                    mock_latency.assert_called_once()
+                    
+                    # Verify the fixture was loaded from the correct path
+                    mock_load.assert_called_once()
+                    fixture_path = mock_load.call_args[0][0]
+                    assert "committee" in str(fixture_path)
+                    assert "117_house_hsju.json" in str(fixture_path)
+                    
+                    # Verify the result
+                    assert result == {"committee": {"name": "Test Committee"}}
+                    
+    @pytest.mark.asyncio
+    async def test_govinfo_collections_handler(self):
+        """Test the GovInfo.gov collections endpoint handler."""
+        server = MockServer()
+        
+        # Create a mock request
+        mock_request = MagicMock()
+        mock_request.query_params = {}
+        
+        # Test with record mode off
+        server.record_mode = False
+        
+        with patch.object(server, "_check_auth") as mock_check_auth:
+            with patch.object(server, "_load_fixture", return_value={"collections": [{"collectionCode": "BILLS"}]}) as mock_load:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Call the collections handler
+                    result = await server._handle_govinfo_collections(mock_request, "test_key")
+                    
+                    # Verify auth was checked
+                    mock_check_auth.assert_called_once_with("govinfo", "test_key", param=True)
+                    
+                    # Verify latency was simulated
+                    mock_latency.assert_called_once()
+                    
+                    # Verify the fixture was loaded from the correct path
+                    mock_load.assert_called_once()
+                    fixture_path = mock_load.call_args[0][0]
+                    assert "collections.json" in str(fixture_path)
+                    
+                    # Verify the result
+                    assert result == {"collections": [{"collectionCode": "BILLS"}]}
+    
+    @pytest.mark.asyncio
+    async def test_govinfo_package_handler(self):
+        """Test the GovInfo.gov package endpoint handler."""
+        server = MockServer()
+        
+        # Create a mock request
+        mock_request = MagicMock()
+        mock_request.query_params = {}
+        
+        # Test with record mode off
+        server.record_mode = False
+        
+        with patch.object(server, "_check_auth") as mock_check_auth:
+            with patch.object(server, "_load_fixture", return_value={"package": {"packageId": "BILLS-117hr1234enr"}}) as mock_load:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Call the package handler
+                    result = await server._handle_govinfo_package("BILLS-117hr1234enr", mock_request, "test_key")
+                    
+                    # Verify auth was checked
+                    mock_check_auth.assert_called_once_with("govinfo", "test_key", param=True)
+                    
+                    # Verify latency was simulated
+                    mock_latency.assert_called_once()
+                    
+                    # Verify the fixture was loaded from the correct path
+                    mock_load.assert_called_once()
+                    fixture_path = mock_load.call_args[0][0]
+                    assert "packages" in str(fixture_path)
+                    assert "BILLS-117hr1234enr.json" in str(fixture_path)
+                    
+                    # Verify the result
+                    assert result == {"package": {"packageId": "BILLS-117hr1234enr"}}
+    
+    @pytest.mark.asyncio
+    async def test_govinfo_package_summary_handler(self):
+        """Test the GovInfo.gov package summary endpoint handler."""
+        server = MockServer()
+        
+        # Create a mock request
+        mock_request = MagicMock()
+        mock_request.query_params = {}
+        
+        # Test with record mode off
+        server.record_mode = False
+        
+        with patch.object(server, "_check_auth") as mock_check_auth:
+            with patch.object(server, "_load_fixture", return_value={"summary": {"packageId": "BILLS-117hr1234enr"}}) as mock_load:
+                with patch.object(server, "_simulate_latency") as mock_latency:
+                    # Call the package summary handler
+                    result = await server._handle_govinfo_package_summary("BILLS-117hr1234enr", mock_request, "test_key")
+                    
+                    # Verify auth was checked
+                    mock_check_auth.assert_called_once_with("govinfo", "test_key", param=True)
+                    
+                    # Verify latency was simulated
+                    mock_latency.assert_called_once()
+                    
+                    # Verify the fixture was loaded from the correct path
+                    mock_load.assert_called_once()
+                    fixture_path = mock_load.call_args[0][0]
+                    assert "packages" in str(fixture_path)
+                    assert "BILLS-117hr1234enr_summary.json" in str(fixture_path)
+                    
+                    # Verify the result
+                    assert result == {"summary": {"packageId": "BILLS-117hr1234enr"}}
+                    
+    @pytest.mark.asyncio
+    async def test_record_response_with_httpx_errors(self):
+        """Test record_response handling of httpx errors."""
+        server = MockServer()
+        server.record_mode = True
+        
+        # Create a mock request
+        mock_request = MagicMock()
+        mock_request.query_params = {}
+        mock_request.headers = {"Host": "localhost", "Accept": "application/json"}
+        
+        # Mock the httpx client
+        mock_client = MagicMock()
+        
+        # Test with HTTPStatusError
+        http_error_response = MagicMock()
+        http_error_response.status_code = 404
+        http_error_response.text = "Not Found"
+        mock_client.get = AsyncMock(side_effect=httpx.HTTPStatusError("404 Not Found", request=MagicMock(), response=http_error_response))
+        
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch("pygovpub.mock.server.config") as mock_config:
+                # Configure mock config
+                mock_config.apis = {
+                    "congress": MagicMock(
+                        base_url="https://api.congress.gov",
+                        api_key="mock_key"
+                    )
+                }
+                
+                # Call record_response and expect HTTPException
+                with pytest.raises(HTTPException) as excinfo:
+                    await server._record_response("congress", "bills/117/hr/1234", mock_request)
+                
+                # Verify error details
+                assert excinfo.value.status_code == 404
+                assert "Error from congress API" in excinfo.value.detail
+        
+        # Test with RequestError
+        mock_client.get = AsyncMock(side_effect=httpx.RequestError("Connection error", request=MagicMock()))
+        
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch("pygovpub.mock.server.config") as mock_config:
+                # Configure mock config
+                mock_config.apis = {
+                    "congress": MagicMock(
+                        base_url="https://api.congress.gov",
+                        api_key="mock_key"
+                    )
+                }
+                
+                # Call record_response and expect HTTPException
+                with pytest.raises(HTTPException) as excinfo:
+                    await server._record_response("congress", "bills/117/hr/1234", mock_request)
+                
+                # Verify error details
+                assert excinfo.value.status_code == 500
+                assert "Error communicating with congress API" in excinfo.value.detail
+        
+        # Test with unexpected error
+        mock_client.get = AsyncMock(side_effect=Exception("Unexpected error"))
+        
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch("pygovpub.mock.server.config") as mock_config:
+                # Configure mock config
+                mock_config.apis = {
+                    "congress": MagicMock(
+                        base_url="https://api.congress.gov",
+                        api_key="mock_key"
+                    )
+                }
+                
+                # Call record_response and expect HTTPException
+                with pytest.raises(HTTPException) as excinfo:
+                    await server._record_response("congress", "bills/117/hr/1234", mock_request)
+                
+                # Verify error details
+                assert excinfo.value.status_code == 500
+                assert "Unexpected error in record mode" in excinfo.value.detail
