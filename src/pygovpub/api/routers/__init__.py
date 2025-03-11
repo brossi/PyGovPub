@@ -12,6 +12,7 @@ from pygovpub.api.routers.members import router as members_router
 from pygovpub.api.routers.webhooks import router as webhooks_router
 from pygovpub.api.routers.cfr import router as cfr_router
 from pygovpub.api.routers.court_opinions import router as court_opinions_router
+from pygovpub.api.routers.search import router as search_router
 
 __all__ = [
     "bills_router",
@@ -22,4 +23,5 @@ __all__ = [
     "webhooks_router",
     "cfr_router",
     "court_opinions_router",
+    "search_router",
 ]
