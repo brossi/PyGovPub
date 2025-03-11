@@ -303,3 +303,30 @@ def any_db_session(any_db_engine) -> Generator[Session, None, None]:
         # Close and rollback the session to prevent test state from leaking
         session.rollback()
         session.close()
+
+
+@pytest.fixture
+def warning_recorder():
+    """
+    Record warnings during test execution.
+    
+    This fixture allows you to capture and verify warnings emitted during a test.
+    
+    Returns:
+        List of warnings recorded during the test
+    """
+    recorded_warnings = []
+    
+    with pytest.warns() as record:
+        yield record
+        
+    # Convert to a more usable format
+    for warning in record:
+        recorded_warnings.append({
+            "message": str(warning.message),
+            "category": warning.category.__name__,
+            "filename": warning.filename,
+            "lineno": warning.lineno
+        })
+        
+    return recorded_warnings

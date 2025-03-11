@@ -33,7 +33,7 @@ class LocalProvider(SearchProvider):
     provider_name = "local"
     supported_types = [t for t in SearchResultType]
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the local search provider."""
         self.indexer = DocumentIndexer()
     
@@ -82,6 +82,34 @@ class LocalProvider(SearchProvider):
         
         await self.indexer.index_documents(sample_docs)
         logger.info(f"Indexed {len(sample_docs)} sample documents")
+    
+    async def add_document(self, id: str, title: str, content: str, metadata: dict, type: SearchResultType) -> str:
+        """Add a document to the index.
+        
+        Args:
+            id: Document ID
+            title: Document title
+            content: Document content
+            metadata: Document metadata
+            type: Document type
+            
+        Returns:
+            Document ID
+        """
+        # Create a document dictionary
+        doc = {
+            "id": id,
+            "type": type.value,
+            "source": "local",
+            "title": title,
+            "content": content,
+            "url": metadata.get("url"),
+            **metadata
+        }
+        
+        # Index the document
+        await self.indexer.index_document(doc)
+        return id
     
     async def search(self, query: SearchQuery) -> SearchResults:
         """Execute search query.

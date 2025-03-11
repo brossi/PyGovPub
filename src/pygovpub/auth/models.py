@@ -4,14 +4,16 @@ Database models for authentication and API usage tracking.
 This module defines SQLModel classes for:
 - ApiConfiguration: API connection and auth settings
 - ApiUsage: Rate limit tracking and API request logging
+- AuthRequest: Authentication request data for API calls
 """
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from enum import Enum
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from sqlmodel import Field, SQLModel
+from pydantic import BaseModel
 
 
 class ApiSource(str, Enum):
@@ -69,3 +71,12 @@ class ApiUsage(SQLModel, table=True):
     rate_limit_reset: Optional[datetime] = None
     success: bool = True
     error_message: Optional[str] = None
+
+
+class AuthRequest(BaseModel):
+    """Authentication request data for API calls."""
+    
+    api_key: Optional[str] = None
+    headers: Dict[str, str] = {}
+    params: Dict[str, Any] = {}
+    source: ApiSource
