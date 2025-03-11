@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import UUID, uuid4
 
 import httpx
-from pydantic import BaseModel, Field, HttpUrl, validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 from pygovpub.events.event_types import Event, EventCategory, EventType
 from pygovpub.events.event_manager import get_event_manager
@@ -89,7 +89,8 @@ class Webhook(BaseModel):
     headers: Dict[str, str] = Field(default_factory=dict)
     """Additional headers to send with webhook requests."""
     
-    @validator("event_types", "event_categories", pre=True)
+    @field_validator("event_types", "event_categories", mode="before")
+    @classmethod
     def validate_unique_values(cls, v):
         """Ensure event_types and event_categories contain unique values."""
         if isinstance(v, list):
@@ -224,7 +225,7 @@ class WebhookDispatcher(EventDispatcherBase):
                 "event_category": event.category.value,
                 "timestamp": event.occurred_at.isoformat(),
                 "data": {
-                    "payload": event.payload.dict(),
+                    "payload": event.payload.model_dump(),
                     "meta": {
                         "priority": event.priority.value,
                         "processed_at": event.processed_at.isoformat() if event.processed_at else None
