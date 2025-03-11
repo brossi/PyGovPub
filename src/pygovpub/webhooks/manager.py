@@ -357,6 +357,243 @@ class WebhookDispatcher(EventDispatcherBase):
         return timedelta(seconds=seconds)
 
 
+class WebhookDispatcher:
+    """Dispatcher for webhook delivery."""
+    
+    def __init__(self, webhook_manager):
+        """Initialize webhook dispatcher.
+        
+        Args:
+            webhook_manager: Webhook manager instance
+        """
+        self.webhook_manager = webhook_manager
+        self.client = httpx.AsyncClient(timeout=30.0)
+        self.logger = logging.getLogger("pygovpub.webhooks.dispatcher")
+        self._retry_queue = asyncio.Queue()
+    
+    async def dispatch(self, event: Event) -> bool:
+        """Dispatch an event to all matching webhooks.
+        
+        Args:
+            event: Event to dispatch
+            
+        Returns:
+            True if all deliveries succeeded, False otherwise
+        """
+        # Get webhooks that should receive this event
+        webhooks = self.webhook_manager.get_webhooks_for_event(event)
+        
+        if not webhooks:
+            self.logger.debug(f"No webhooks found for event {event.id}")
+            return True
+            
+        self.logger.info(f"Dispatching event {event.id} to {len(webhooks)} webhooks")
+        
+        # Track success for all deliveries
+        all_success = True
+        
+        # Deliver to each webhook
+        for webhook in webhooks:
+            # Create delivery record
+            delivery = self.webhook_manager.create_delivery(webhook.id, event.id)
+            
+            # Attempt delivery
+            success = await self._deliver_to_webhook(event, webhook, delivery)
+            
+            if not success:
+                all_success = False
+        
+        return all_success
+    
+    async def _deliver_to_webhook(self, event: Event, webhook: Webhook, delivery: WebhookDelivery) -> bool:
+        """Deliver an event to a webhook.
+        
+        Args:
+            event: Event to deliver
+            webhook: Webhook to deliver to
+            delivery: Delivery record
+            
+        Returns:
+            True if delivery succeeded, False otherwise
+        """
+        # Update delivery status
+        delivery.status = WebhookDeliveryStatus.PENDING
+        delivery.attempt_count += 1
+        delivery.attempted_at = datetime.utcnow()
+        self.webhook_manager._save_delivery(delivery)
+        
+        # Check if we've exceeded retry limits
+        if delivery.attempt_count > self.webhook_manager.max_retries:
+            self.logger.warning(f"Max retries ({self.webhook_manager.max_retries}) "
+                              f"exceeded for delivery {delivery.id}")
+            delivery.status = WebhookDeliveryStatus.DROPPED
+            delivery.error_message = f"Max retries ({self.webhook_manager.max_retries}) exceeded"
+            delivery.next_attempt_at = None
+            self.webhook_manager._save_delivery(delivery)
+            return False
+        
+        try:
+            # Prepare payload JSON
+            payload = {
+                "event_id": str(event.id),
+                "event_type": event.event_type,
+                "occurred_at": event.occurred_at.isoformat(),
+                "delivery_id": str(delivery.id),
+                "data": event.payload.dict()
+            }
+            
+            payload_json = json.dumps(payload)
+            
+            # Create signature if webhook has a secret
+            headers = webhook.headers.copy() if webhook.headers else {}
+            if webhook.secret:
+                signature = self._create_signature(webhook.secret, payload_json)
+                headers["X-PyGovPub-Signature"] = signature
+                
+            headers["Content-Type"] = "application/json"
+            headers["X-PyGovPub-Event"] = event.event_type
+            headers["X-PyGovPub-Delivery"] = str(delivery.id)
+            
+            # Make the request
+            self.logger.debug(f"Delivering event {event.id} to webhook {webhook.id}")
+            response = await self.client.post(
+                str(webhook.url),
+                content=payload_json,
+                headers=headers
+            )
+            
+            # Record the response
+            delivery.response_code = response.status_code
+            delivery.response_body = response.text[:1024] if response.text else None
+            delivery.completed_at = datetime.utcnow()
+            
+            # Update webhook metadata
+            webhook.last_delivery_at = datetime.utcnow()
+            
+            # Handle success/failure
+            if 200 <= response.status_code < 300:
+                delivery.status = WebhookDeliveryStatus.SUCCESS
+                webhook.failure_count = 0  # Reset on success
+                self.logger.info(f"Successfully delivered event {event.id} to webhook {webhook.id}")
+            else:
+                delivery.status = WebhookDeliveryStatus.RETRYING
+                delivery.error_message = f"HTTP {response.status_code}: {response.text[:100]}"
+                delivery.next_attempt_at = datetime.utcnow() + self._calculate_retry_delay(delivery.attempt_count)
+                
+                webhook.failure_count += 1
+                self.logger.warning(f"Failed to deliver event {event.id} to webhook {webhook.id}: "
+                                  f"HTTP {response.status_code}")
+            
+            # Check if webhook has exceeded max failures
+            if webhook.failure_count >= self.webhook_manager.max_failures:
+                webhook.status = WebhookStatus.FAILED
+                self.logger.warning(f"Webhook {webhook.id} has exceeded "
+                                  f"max failures ({self.webhook_manager.max_failures})")
+            
+            # Save updates
+            self.webhook_manager._save_delivery(delivery)
+            self.webhook_manager._save_webhook(webhook)
+            
+            return delivery.status == WebhookDeliveryStatus.SUCCESS
+            
+        except httpx.RequestError as e:
+            # Handle HTTP request errors
+            delivery.status = WebhookDeliveryStatus.RETRYING
+            delivery.error_message = f"Connection error: {str(e)}"
+            delivery.next_attempt_at = datetime.utcnow() + self._calculate_retry_delay(delivery.attempt_count)
+            delivery.completed_at = datetime.utcnow()
+            
+            webhook.failure_count += 1
+            
+            # Check if webhook has exceeded max failures
+            if webhook.failure_count >= self.webhook_manager.max_failures:
+                webhook.status = WebhookStatus.FAILED
+            
+            # Save updates
+            self.webhook_manager._save_delivery(delivery)
+            self.webhook_manager._save_webhook(webhook)
+            
+            self.logger.warning(f"Connection error delivering event {event.id} to webhook {webhook.id}: {e}")
+            return False
+        except Exception as e:
+            # Handle other errors
+            delivery.status = WebhookDeliveryStatus.FAILED
+            delivery.error_message = f"Error: {str(e)}"
+            delivery.completed_at = datetime.utcnow()
+            
+            webhook.failure_count += 1
+            
+            # Check if webhook has exceeded max failures
+            if webhook.failure_count >= self.webhook_manager.max_failures:
+                webhook.status = WebhookStatus.FAILED
+            
+            # Save updates
+            self.webhook_manager._save_delivery(delivery)
+            self.webhook_manager._save_webhook(webhook)
+            
+            self.logger.error(f"Error delivering event {event.id} to webhook {webhook.id}: {e}")
+            return False
+    
+    async def _retry_delivery(self, delivery: WebhookDelivery) -> bool:
+        """Retry a failed delivery.
+        
+        Args:
+            delivery: Delivery to retry
+            
+        Returns:
+            True if retry succeeded, False otherwise
+        """
+        # Get the webhook
+        webhook = self.webhook_manager.get_webhook(delivery.webhook_id)
+        if not webhook:
+            self.logger.warning(f"Cannot retry delivery {delivery.id}: webhook {delivery.webhook_id} not found")
+            return False
+            
+        # Get the event
+        event_manager = get_event_manager()
+        event = event_manager.get_event(delivery.event_id)
+        if not event:
+            self.logger.warning(f"Cannot retry delivery {delivery.id}: event {delivery.event_id} not found")
+            delivery.status = WebhookDeliveryStatus.FAILED
+            delivery.error_message = f"Event {delivery.event_id} not found"
+            self.webhook_manager._save_delivery(delivery)
+            return False
+            
+        # Retry the delivery
+        return await self._deliver_to_webhook(event, webhook, delivery)
+    
+    def _create_signature(self, secret: str, payload: str) -> str:
+        """Create HMAC signature for webhook payload.
+        
+        Args:
+            secret: Webhook secret
+            payload: JSON payload string
+            
+        Returns:
+            Signature string
+        """
+        digest = hmac.new(
+            key=secret.encode('utf-8'),
+            msg=payload.encode('utf-8'),
+            digestmod=hashlib.sha256
+        ).hexdigest()
+        
+        return f"sha256={digest}"
+    
+    def _calculate_retry_delay(self, attempt_count: int) -> timedelta:
+        """Calculate exponential backoff delay for retries.
+        
+        Args:
+            attempt_count: Current attempt count
+            
+        Returns:
+            Delay as timedelta
+        """
+        # Exponential backoff with minimum delay
+        delay_seconds = max(10, min(2 ** attempt_count, 3600))
+        return timedelta(seconds=delay_seconds)
+
+
 class WebhookManager:
     """Manager for webhooks and webhook deliveries."""
     
