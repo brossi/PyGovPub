@@ -429,3 +429,136 @@ class TestMockServer:
                 # Only check the response content for successful requests
                 if response.status_code == 200:
                     assert response.json()["endpoint"] == endpoint
+                    
+    def test_record_mode(self, tmp_path):
+        """Test record mode functionality."""
+        # Set up fixtures path
+        fixtures_dir = tmp_path / "fixtures"
+        os.makedirs(fixtures_dir, exist_ok=True)
+        
+        # Create a server instance with record mode enabled
+        server = MockServer(fixtures_path=str(fixtures_dir))
+        server.record_mode = True
+        
+        # Mock out the API client and config
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"recorded": True, "data": "test"}
+        
+        # Mock the httpx client
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            mock_client.get = AsyncMock(return_value=mock_response)
+            
+            # Mock the config
+            with patch("pygovpub.mock.server.config") as mock_config:
+                mock_config.apis = {
+                    "congress": MagicMock(
+                        base_url="https://api.congress.gov",
+                        api_key="test_key"
+                    ),
+                    "govinfo": MagicMock(
+                        base_url="https://api.govinfo.gov",
+                        api_key="test_key"
+                    )
+                }
+                
+                # Create a fake request for testing
+                fake_request = MagicMock()
+                fake_request.query_params = {}
+                fake_request.headers = {"Host": "localhost", "Accept": "application/json"}
+                
+                # Test record mode for Congress API
+                result = asyncio.run(server._record_response("congress", "bills/117/hr/1234", fake_request))
+                
+                # Verify the request was made
+                mock_client.get.assert_called_once()
+                assert result == {"recorded": True, "data": "test"}
+                
+                # Test with file writing
+                with patch("builtins.open", mock_open()) as mock_file:
+                    with patch("json.dump") as mock_json_dump:
+                        # Reset mock
+                        mock_client.get.reset_mock()
+                        
+                        # Test record mode with file writing
+                        result = asyncio.run(server._record_response("congress", "bills/117/hr/1234", fake_request))
+                        
+                        # Verify file was opened and JSON was written
+                        mock_file.assert_called_once()
+                        mock_json_dump.assert_called_once()
+                        
+    def test_load_fixture(self, tmp_path):
+        """Test fixture loading functionality."""
+        # Set up fixtures path
+        fixtures_dir = tmp_path / "fixtures"
+        defaults_dir = fixtures_dir / "defaults"
+        os.makedirs(defaults_dir, exist_ok=True)
+        
+        # Create test fixtures
+        test_fixture = {"test": "data"}
+        with open(os.path.join(defaults_dir, "test_fixture.json"), "w") as f:
+            json.dump(test_fixture, f)
+            
+        # Create server instance
+        server = MockServer(fixtures_path=str(fixtures_dir))
+        
+        # Test loading existing fixture
+        fixture_path = fixtures_dir / "specific_fixture.json"
+        with open(fixture_path, "w") as f:
+            json.dump({"specific": True}, f)
+            
+        result = server._load_fixture(fixture_path)
+        assert result == {"specific": True}
+        
+        # Test loading default fixture
+        non_existent_path = fixtures_dir / "non_existent.json"
+        result = server._load_fixture(non_existent_path, default_fixture="test_fixture.json")
+        assert result == {"test": "data"}
+        
+        # Test with invalid JSON in fixture
+        invalid_fixture_path = fixtures_dir / "invalid.json"
+        with open(invalid_fixture_path, "w") as f:
+            f.write("invalid json{")
+            
+        with pytest.raises(HTTPException) as excinfo:
+            server._load_fixture(invalid_fixture_path)
+        assert excinfo.value.status_code == 500
+        assert "Invalid JSON" in excinfo.value.detail
+        
+        # Test fallback when no fixture exists
+        no_default_result = server._load_fixture(non_existent_path)
+        assert "mock" in no_default_result
+        assert no_default_result["mock"] is True
+        
+    def test_health_check(self):
+        """Test health check endpoint."""
+        # Create server instance
+        server = MockServer()
+        
+        # Test health check response
+        health_response = asyncio.run(server._handle_health_check())
+        
+        assert health_response["status"] == "ok"
+        assert "version" in health_response
+        assert "apis" in health_response
+        assert "congress" in health_response["apis"]
+        assert "govinfo" in health_response["apis"]
+        
+    def test_simulate_latency(self):
+        """Test latency simulation."""
+        # Create server with latency
+        server = MockServer()
+        server.latency_ms = 50
+        
+        # Test with mocked sleep
+        with patch("asyncio.sleep") as mock_sleep:
+            asyncio.run(server._simulate_latency())
+            mock_sleep.assert_called_once_with(0.05)
+            
+        # Test with zero latency
+        server.latency_ms = 0
+        with patch("asyncio.sleep") as mock_sleep:
+            asyncio.run(server._simulate_latency())
+            mock_sleep.assert_not_called()

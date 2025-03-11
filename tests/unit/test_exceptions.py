@@ -191,6 +191,13 @@ def test_resource_errors():
     assert not_found.suggestion is not None
     assert "Verify that bill with ID 'hr123-117' exists" in not_found.suggestion
     
+    # Resource not found without resource_type and resource_id
+    simple_not_found = ResourceNotFoundError("Resource not found")
+    assert simple_not_found.status_code == 404
+    assert simple_not_found.error_code == ErrorCode.RESOURCE_NOT_FOUND
+    assert simple_not_found.suggestion is not None
+    assert "Verify the resource identifier and existence" in simple_not_found.suggestion
+    
     # Resource unavailable
     unavailable = ResourceUnavailableError(
         "Bill temporarily unavailable",
@@ -328,3 +335,23 @@ def test_mock_server_error():
     assert mock_error.status_code == 500
     assert mock_error.error_code == ErrorCode.MOCK_GENERAL
     assert mock_error.severity == ErrorSeverity.ERROR
+
+
+def test_error_context_with_none_values():
+    """Test ErrorContext with None values."""
+    context = ErrorContext()
+    assert context.request_id is None
+    assert context.timestamp is not None  # Should default to current time
+    assert context.source == ApiErrorSource.INTERNAL
+    assert context.request_details == {}
+    assert context.response_details == {}
+    assert context.additional_info == {}
+    
+    # Test to_dict with None values
+    context_dict = context.to_dict()
+    assert context_dict["request_id"] is None
+    assert "timestamp" in context_dict
+    assert context_dict["source"] == ApiErrorSource.INTERNAL
+    assert context_dict["request_details"] == {}
+    assert context_dict["response_details"] == {}
+    assert context_dict["additional_info"] == {}
