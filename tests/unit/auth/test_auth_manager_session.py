@@ -283,39 +283,43 @@ async def test_execute_request_content_type_handling(auth_manager):
         ""  # Empty content type
     ]
     
-    for content_type in content_types:
-        # Create a response with the current content type
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.headers = {"Content-Type": content_type}
+    # Optimize by patching rate limiter to avoid unnecessary waits
+    with patch.object(auth_manager.rate_limiter, 'pre_request', return_value=None), \
+         patch.object(auth_manager.rate_limiter, 'track_request', return_value=None):
         
-        if content_type == "application/json":
-            mock_response.json.return_value = {"data": "json data"}
-            mock_response.text.return_value = '{"data": "json data"}'
-        else:
-            mock_response.json.side_effect = ValueError("Not JSON")
-            mock_response.text.return_value = "Text data"
-        
-        # Create session with this response
-        session = CustomSessionMock(response=mock_response)
-        
-        # Patch aiohttp.ClientSession to return our mock
-        with patch('aiohttp.ClientSession', return_value=session):
-            # Execute request with this content type
-            result = await auth_manager.execute_request(
-                source=ApiSource.CONGRESS,
-                endpoint="/test",
-                method="GET"
-            )
+        for content_type in content_types:
+            # Create a response with the current content type
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.headers = {"Content-Type": content_type}
             
-            # Verify we got appropriate results based on content type
             if content_type == "application/json":
-                assert result == {"data": "json data"}
+                mock_response.json.return_value = {"data": "json data"}
+                mock_response.text.return_value = '{"data": "json data"}'
             else:
-                assert result == {"text": "Text data"}
+                mock_response.json.side_effect = ValueError("Not JSON")
+                mock_response.text.return_value = "Text data"
             
-            # Verify session was properly cleaned up
-            assert session.entered is True
-            assert session.exited is True  # This indicates the context manager exited properly
-            assert session.response_context.entered is True
-            assert session.response_context.exited is True
+            # Create session with this response
+            session = CustomSessionMock(response=mock_response)
+            
+            # Patch aiohttp.ClientSession to return our mock
+            with patch('aiohttp.ClientSession', return_value=session):
+                # Execute request with this content type
+                result = await auth_manager.execute_request(
+                    source=ApiSource.CONGRESS,
+                    endpoint="/test",
+                    method="GET"
+                )
+                
+                # Verify we got appropriate results based on content type
+                if content_type == "application/json":
+                    assert result == {"data": "json data"}
+                else:
+                    assert result == {"text": "Text data"}
+                
+                # Verify session was properly cleaned up
+                assert session.entered is True
+                assert session.exited is True  # This indicates the context manager exited properly
+                assert session.response_context.entered is True
+                assert session.response_context.exited is True

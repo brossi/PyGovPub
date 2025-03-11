@@ -38,9 +38,17 @@ class TrackedMemoryStorage(MemoryStorage[Any]):
 
 
 @pytest.fixture
-def tracked_storage():
-    """Fixture that provides a TrackedMemoryStorage instance."""
-    return TrackedMemoryStorage()
+def tracked_storage_factory():
+    """Fixture that provides a function to create TrackedMemoryStorage instances."""
+    def _create_storage(max_items: int = 1000):
+        return TrackedMemoryStorage(max_items)
+    return _create_storage
+
+
+@pytest.fixture
+def tracked_storage(tracked_storage_factory):
+    """Fixture that provides a TrackedMemoryStorage instance with default settings."""
+    return tracked_storage_factory()
 
 
 def test_cache_manager_initialization(tracked_storage):

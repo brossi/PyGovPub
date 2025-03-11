@@ -265,6 +265,23 @@ def test_manage_different_key_types():
     # Verify GovInfo API key is in the params
     assert "api_key" in govinfo_request["params"]
     assert govinfo_request["params"]["api_key"] == "govinfo_key"
+    
+    # Test authentication with existing headers and params
+    # This tests line 293-297 branch for existing values
+    congress_request_with_existing = manager.authenticate_request(
+        source=ApiSource.CONGRESS,
+        endpoint="/test",
+        headers={"Accept": "application/json", "X-Custom": "value"},
+        params={"param1": "value1"}
+    )
+    
+    # Verify original headers kept and API key added
+    assert congress_request_with_existing["headers"]["Accept"] == "application/json"
+    assert congress_request_with_existing["headers"]["X-Custom"] == "value"
+    assert congress_request_with_existing["headers"]["X-API-Key"] == "congress_key"
+    
+    # Verify original params kept
+    assert congress_request_with_existing["params"]["param1"] == "value1"
 
 
 def test_bad_version_format():
@@ -304,6 +321,109 @@ def test_incompatible_version():
 
     # Test with version in supported range
     assert manager.check_version_compatibility(ApiSource.CONGRESS, "3.5.0")
+
+
+def test_empty_headers_in_execute_request():
+    """Test handling of empty headers in execute_request method.
+    
+    This tests lines 379-380 in execute_request method.
+    """
+    store = ApiKeyStore()
+    manager = AuthManager()
+    manager.key_store = store
+    manager.add_key(ApiSource.CONGRESS, "test_key")
+
+    # Create a mock response with empty headers
+    mock_response = MockResponse(
+        status=200,
+        data={"data": "test_data"},
+        headers=None  # Empty headers dict
+    )
+    
+    # Create a proper mock for the session.request method
+    async_context_mock = AsyncContextManagerMock(mock_response)
+    
+    # Create a mock function that returns our context manager
+    def mock_request(*args, **kwargs):
+        return async_context_mock
+    
+    # Run the asynchronous test
+    async def _test():
+        # Patch the request method with our mock
+        with patch('aiohttp.ClientSession.request', mock_request):
+            # Execute request with empty headers
+            result = await manager.execute_request(
+                source=ApiSource.CONGRESS,
+                endpoint="/test",
+                method="GET"
+            )
+            
+            # Verify result (should still work)
+            assert result == {"data": "test_data"}
+    
+    # Run the async test
+    import asyncio
+    asyncio.run(_test())
+
+
+@pytest.mark.asyncio
+async def test_execute_request_with_binary_content():
+    """Test execute_request with binary content (testing line 393).
+    
+    This covers lines 389, 393-394 in execute_request method.
+    """
+    store = ApiKeyStore()
+    manager = AuthManager()
+    manager.key_store = store
+    manager.add_key(ApiSource.CONGRESS, "test_key")
+
+    # Create a mock response with binary content
+    binary_data = b"\x00\x01\x02\x03\x04"
+    
+    class BinaryMockResponse(MockResponse):
+        def __init__(self):
+            super().__init__(
+                status=200,
+                data=None,
+                headers={"Content-Type": "application/octet-stream"}
+            )
+            self._binary_data = binary_data
+            
+        async def json(self):
+            # Should fail for binary data
+            raise ValueError("Cannot parse binary as JSON")
+            
+        async def text(self):
+            # Should also fail for binary data
+            raise UnicodeDecodeError("utf-8", self._binary_data, 0, 1, "Invalid binary data")
+            
+        async def read(self):
+            # Provide the binary data directly
+            return self._binary_data
+    
+    # Create a response
+    mock_response = BinaryMockResponse()
+    
+    # Create a context manager
+    async_context_mock = AsyncContextManagerMock(mock_response)
+    
+    # Create a mock function for request
+    def mock_request(*args, **kwargs):
+        return async_context_mock
+    
+    # Patch the request method
+    with patch('aiohttp.ClientSession.request', mock_request):
+        # Execute request with binary response
+        result = await manager.execute_request(
+            source=ApiSource.CONGRESS,
+            endpoint="/test",
+            method="GET"
+        )
+        
+        # The auth_manager doesn't have special handling for binary yet
+        # It will fall back to error handling
+        assert "error" in result
+        assert "Failed to process response" in result["error"]
 
 
 def test_unsupported_api_source():
@@ -439,6 +559,35 @@ async def test_execute_request_http_error():
                 endpoint="/test",
                 method="GET"
             )
+            
+            
+def test_key_store_additional_paths():
+    """Test additional paths in ApiKeyStore.
+    
+    This tests lines 68, 72, 106 in ApiKeyStore.
+    """
+    # Test with a non-string key value - API is actually intended to be used with strings
+    store = ApiKeyStore()
+    
+    # Test store_key error path (line 87-88)
+    with pytest.raises(ValueError):
+        store.store_key(None, "test_key")  # Source is None
+        
+    with pytest.raises(ValueError):
+        store.store_key(ApiSource.CONGRESS, "")  # Empty key
+        
+    # Normal key storage
+    store.store_key(ApiSource.CONGRESS, "test_key")
+    assert store.get_key(ApiSource.CONGRESS) == "test_key"
+        
+    # Test remove_key when key doesn't exist (line 72)
+    store = ApiKeyStore()  # New store
+    # Remove non-existent key (should not raise any error)
+    store.remove_key(ApiSource.CONGRESS)  # Should not raise any exception
+    assert not store.has_key(ApiSource.CONGRESS)
+    
+    # Test get_key with no key present (missing key branch)
+    assert store.get_key(ApiSource.CONGRESS) is None
 
 
 @pytest.mark.asyncio
