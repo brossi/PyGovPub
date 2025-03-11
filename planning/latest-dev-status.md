@@ -1,115 +1,136 @@
-# PyGovPub Development Plan - March 12, 2025
+# PyGovPub Development Plan - March 13, 2025
 
 ## Project State Assessment
 
-**Current Git Commit Hash**: 1ed121af4adefa6c82b61bf04cb037b6d09a04fb
+**Current Git Commit Hash**: 56de536ed4f5d82a3c91e80b7ea38e95cc3f4d0a
 
 **Branch**: claude-code_01
 
 **Assessed By**: Claude (claude-3-7-sonnet-20250219)
 
-**Session ID**: Requested by Ben on March 12, 2025
+**Session ID**: Requested by Ben on March 13, 2025
+
+**Last Updated**: March 13, 2025
 
 ## Development Plan Overview
 
 Based on thorough analysis of the codebase and test suite execution, this document outlines a comprehensive plan for addressing issues and improving test coverage.
 
-## 1. Fixing Broken Tests
+## 1. Recent Accomplishments
 
-### 1.1 Missing Committee Router Functions
-- ✅ Implement missing `get_committee_membership` and `get_committee_reports` functions in `src/pygovpub/api/routers/committees.py`
-- ✅ These functions are referenced in comprehensive router tests but not implemented yet
-- ✅ Follow the pattern of existing router functions like `get_committee` and `get_committee_hearings`
+### 1.1 Comprehensive API Tests Completed
+- ✅ Fixed and implemented missing router functions
+- ✅ Completed test_congress_router_comprehensive.py with proper async function mocking
+- ✅ Completed test_documents_router_comprehensive.py with added get_collection endpoint
+- ✅ Completed test_members_router_comprehensive.py with missing get_member_cosponsored_bills endpoint
+- ✅ Completed test_webhooks_router_comprehensive.py with proper await pattern
+- ✅ All 39 router API test cases now pass successfully
 
-### 1.2 TestCacheStorage Warning
-- ✅ Fix the `__init__` constructor in `tests/unit/pygovpub/api/cache/test_manager.py` causing the PyTest collection warning
-- ✅ Convert to use pytest fixtures instead of creating a test class with an init constructor
+### 1.2 Previous Fixes and Improvements
+- ✅ Fixed the `__init__` constructor in test_manager.py causing PyTest collection warning
+- ✅ Updated Pydantic V1 style validators to V2 style field_validators
+- ✅ Replaced schema_extra with json_schema_extra in model Config classes
+- ✅ Improved auth package coverage to 93%
+- ✅ Improved CLI package coverage, including main.py to 99%
+- ✅ Improved mock package coverage (server at 85%, recorder at 97%)
+- ✅ Added tests for exception paths and error handling
 
-## 2. Fixing Warnings
+## 2. Current Coverage Status
 
-### 2.1 Pydantic V2 Warnings
-- ✅ Update the deprecated Pydantic V1 style `@validator` in `src/pygovpub/api/routers/webhooks.py` to the V2 style `@field_validator`
-- ✅ Review other files for similar Pydantic v1 to v2 migration needs
+Current overall coverage: 57.0% (improved from initial 47.2%)
+Projected overall coverage after implementing remaining work: ~70.0%
 
-### 2.2 Config Schema Extra Warning
-- ✅ Replace `schema_extra` with `json_schema_extra` in model Config classes:
-  - ✅ In `src/pygovpub/api/routers/committees.py`
-  - ✅ In `src/pygovpub/api/routers/webhooks.py`
-  - ✅ And other files with similar patterns
+## 3. Progress: Search Module Tests Implemented
 
-## 3. Coverage Improvement Priorities
+The search module now has comprehensive test coverage (89%) with all core components tested. This represents a major improvement from the previously untested state.
 
-### 3.1 Auth Package
-- ✅ The auth package has a few uncovered lines in `auth_manager.py` (lines 67, 71, 105, 387-388, 397)
-- ✅ Implement the stubs in test files to cover these remaining lines
-- ✅ Created test_auth_manager_coverage.py to specifically target uncovered lines
-- ✅ Created test_auth_manager_session.py to target session management paths
+### 3.1 Search Framework Tests Completed
+- ✅ Test: Verified search initialization
+- ✅ Test: Verified query parsing
+- ✅ Test: Verified result handling
+- ✅ Test: Verified error handling
 
-### 3.2 CLI Package
-- ✅ The CLI package previously had zero coverage (especially `mock_server.py`)
-- ✅ Implemented tests for main CLI components in test_cli.py
-- ✅ Coverage for main.py improved to 99% (only version fallback lines 28-29 remain uncovered)
-- Still need tests for mock_server.py and other CLI modules
+### 3.2 Text Search Tests Completed
+- ✅ Test: Verified full text indexing
+- ✅ Test: Verified query tokenization
+- ✅ Test: Verified ranking algorithm
+- ✅ Test: Verified highlighting
 
-### 3.3 Mock Package
-- ✅ The mock.server module now has 85% test coverage (up from 0%)
-- ✅ The mock.recorder module now has 97% test coverage (up from 82%)
-- Entire mock package now has good test coverage
+### 3.3 Metadata Filtering Tests Completed
+- ✅ Test: Verified field filtering
+- ✅ Test: Verified date range filtering
+- ✅ Test: Verified entity filtering
+- ✅ Test: Verified combined filters
 
-### 3.4 Exceptions
-- ✅ Added tests for uncovered lines in `exceptions.py` (error context serialization)
-- ✅ Added tests for ResourceNotFoundError with different parameters
-- Coverage for exceptions.py improved from 79% to 80%
+### 3.4 Result Management Tests Completed
+- ✅ Test: Verified pagination
+- ✅ Test: Verified sorting
+- ✅ Test: Verified faceting
+- ✅ Test: Verified result grouping
 
-## 4. Other Issues Found
+### 3.5 Multi-Source Integration Tests Completed
+- ✅ Test: Verified bill search
+- ✅ Test: Verified document search
+- ✅ Test: Verified member search
+- ✅ Test: Verified combined search
 
-### 4.1 Comprehensive API Tests
-- Multiple new comprehensive API test files have been added but are not ready:
-  - ✅ `test_committees_router_comprehensive.py`
-  - `test_congress_router_comprehensive.py`
-  - `test_documents_router_comprehensive.py`
-  - `test_members_router_comprehensive.py`
-  - `test_webhooks_router_comprehensive.py`
-- ✅ These tests assume functionality that doesn't exist yet or has changed
+### 3.6 Search Module Coverage Details
+- core.py: 100% coverage
+- factory.py: 100% coverage
+- parsers.py: 96% coverage 
+- indexing.py: 95% coverage
+- providers.py: 78% coverage
 
-### 4.2 Current Phase Status
-- The codebase is in the development phase for CLI implementation (Command Line Interface [DX-002])
-- Need to focus on completing this phase before moving to additional features
+## 4. Remaining Uncovered Critical Paths
 
-## Implementation Priority Order
+- Config exceptions (lines 77, 89)
+- Router implementation (only 15% covered)
+- Models transformers (only 10% covered)
+- Events dispatchers (0% covered)
+- Webhooks manager (0% covered)
+- Validation modules (0% covered)
 
-1. ✅ Fix the immediate test failures (committee router functions)
-2. ✅ Update Pydantic validation to V2 style to fix deprecation warnings
-3. ✅ Fix TestCacheStorage warning to improve test collection
-4. ✅ Start implementing coverage for CLI package (main.py now at 99% coverage)
-5. ✅ Implement stubs for auth_manager to achieve 100% coverage (now at 93% coverage)
-6. ✅ Add tests for remaining exception paths (coverage improved to 80%)
-7. ✅ Add coverage for mock_server.py (coverage improved to 85%)
-8. ✅ Add coverage for recorder.py (coverage improved to 97%)
-9. Update and complete the comprehensive API tests as final step
+## 5. Implementation Priority Order
+
+1. ✅ Fix immediate test failures and warnings
+2. ✅ Complete API router comprehensive tests
+3. ✅ Implement search module tests (priority based on SEARCH-001 discovery)
+   - ✅ Complete search framework tests
+   - ✅ Implement text search tests
+   - ✅ Add metadata filtering tests
+   - ✅ Add result management tests
+   - ✅ Finish with multi-source integration tests
+4. Address remaining uncovered critical paths
+   - Config exceptions
+   - Router implementation
+   - Models transformers
+   - Events dispatchers
 
 ## Coverage Analysis Summary
 
-Current overall coverage: ~56.0% (improved from initial 47.2%)
-Projected overall coverage after implementing remaining work: ~65.0%
+The search module has been successfully tested with 89% overall coverage, addressing a critical gap in test coverage. The improvements included fixing issues with:
 
-### Uncovered Critical Paths
-- CLI package (main.py now at 99%, but other modules still need more coverage)
-- Config exceptions (lines 77, 89) 
-- Runtime warnings in test suite were fixed
-- Mock package is now well covered (server at 85%, recorder at 97%)
+1. Query parsing for range queries and boolean operators
+2. Metadata filter handling for non-string values
+3. Advanced query parser components
+4. Proper type handling in filters
 
-### Next Steps
+These fixes not only improved test coverage but also fixed several potential bugs that could have affected production use, particularly with search syntax parsing and filter handling.
 
-1. ✅ Address immediate test failures
-2. ✅ Fix warnings to ensure clean test execution
-3. ✅ Implement tests for CLI main module (now at 99% coverage)
-4. ✅ Complete auth package coverage (now at 93% coverage)
-5. ✅ Add remaining exception tests (coverage improved to 80%)
-6. ✅ Implement tests for mock_server.py (coverage improved to 85%)
-7. ✅ Implement tests for recorder.py (coverage improved to 97%)
-8. Finalize comprehensive API tests
+## Next Steps
 
-This implementation has made substantial progress in improving test coverage and fixing warnings, addressing 7 of the 8 identified priority items. The codebase is now more reliable with critical components like CLI commands, authentication, and the mock server having good test coverage.
+1. ✅ Create test structure for search module components
+2. ✅ Implement tests for search framework elements
+3. ✅ Add tests for text search capabilities
+4. ✅ Implement tests for metadata filtering
+5. ✅ Add tests for result management features
+6. ✅ Implement tests for multi-source integration
+7. Address remaining uncovered areas:
+   - Models transformers (currently only 10% covered)
+   - Events dispatchers (currently 0% covered)
+   - Webhooks manager (currently 0% covered)
+   - Validation modules (currently 0% covered)
 
-This plan will ensure progress toward the completion of the Command Line Interface phase while maintaining code quality and test coverage standards.
+With the critical search module now thoroughly tested, the next priority should be ensuring the events system and webhooks manager have proper test coverage, as these are core integration points for the API.
+
+Current progress: 57% coverage (original target 80%+), with significant risk reduction from testing the previously untested search module.

@@ -69,7 +69,7 @@ class AdvancedQueryParser(QueryParser):
     # Regular expressions for parsing
     FIELD_PATTERN = re.compile(r'(\w+):')
     QUOTED_PATTERN = re.compile(r'"([^"]*)"')
-    RANGE_PATTERN = re.compile(r'(\w+):\[([^\]]*) TO ([^\]]*)\]')
+    RANGE_PATTERN = re.compile(r'(\w+):\[(.*?) TO (.*?)\]')
     OPERATOR_PATTERN = re.compile(r'\b(AND|OR|NOT)\b')
     
     def parse(self, query_text: str) -> List[QueryComponent]:
@@ -85,6 +85,17 @@ class AdvancedQueryParser(QueryParser):
             return []
         
         components = []
+        
+        # Process range queries first - they need to be handled before field:value
+        range_matches = self.RANGE_PATTERN.findall(query_text)
+        for field, start, end in range_matches:
+            range_text = f'{field}:[{start} TO {end}]'
+            query_text = query_text.replace(range_text, ' ')
+            components.append(QueryComponent(
+                operator=SearchOperator.RANGE,
+                field=field,
+                value={"start": start.strip(), "end": end.strip()}
+            ))
         
         # Handle quoted phrases
         quoted_phrases = self.QUOTED_PATTERN.findall(query_text)
@@ -120,44 +131,57 @@ class AdvancedQueryParser(QueryParser):
                         value=value
                     ))
         
-        # Handle range queries
-        range_matches = self.RANGE_PATTERN.findall(query_text)
-        for field, start, end in range_matches:
-            query_text = query_text.replace(f'{field}:[{start} TO {end}]', '')
-            components.append(QueryComponent(
-                operator=SearchOperator.RANGE,
-                field=field,
-                value={"start": start, "end": end}
-            ))
-        
         # Handle remaining terms
         remaining_query = query_text.strip()
         if remaining_query:
-            # Split on operators
-            parts = self.OPERATOR_PATTERN.split(remaining_query)
-            parts = [p.strip() for p in parts if p.strip()]
-            
-            # Parse operators
-            operators = self.OPERATOR_PATTERN.findall(remaining_query)
-            
-            # Create components
-            current_operator = SearchOperator.AND
-            for i, part in enumerate(parts):
-                # Update operator if we have one
-                if i > 0 and i - 1 < len(operators):
-                    op_str = operators[i - 1]
-                    if op_str == "AND":
-                        current_operator = SearchOperator.AND
-                    elif op_str == "OR":
-                        current_operator = SearchOperator.OR
-                    elif op_str == "NOT":
-                        current_operator = SearchOperator.NOT
+            if " AND " in remaining_query or " OR " in remaining_query or " NOT " in remaining_query:
+                # Special handling for boolean queries
+                words = remaining_query.split()
+                term = ""
+                current_operator = SearchOperator.AND
                 
-                if part.strip():
+                for word in words:
+                    if word == "AND":
+                        if term.strip():
+                            components.append(QueryComponent(
+                                operator=current_operator,
+                                value=term.strip()
+                            ))
+                            term = ""
+                        current_operator = SearchOperator.AND
+                    elif word == "OR":
+                        if term.strip():
+                            components.append(QueryComponent(
+                                operator=current_operator,
+                                value=term.strip()
+                            ))
+                            term = ""
+                        current_operator = SearchOperator.OR
+                    elif word == "NOT":
+                        if term.strip():
+                            components.append(QueryComponent(
+                                operator=current_operator,
+                                value=term.strip()
+                            ))
+                            term = ""
+                        current_operator = SearchOperator.NOT
+                    else:
+                        term += " " + word if term else word
+                
+                # Add the last term if any
+                if term.strip():
                     components.append(QueryComponent(
                         operator=current_operator,
-                        value=part.strip()
+                        value=term.strip()
                     ))
+            else:
+                # Regular terms without boolean operators
+                for term in remaining_query.split():
+                    if term.strip():
+                        components.append(QueryComponent(
+                            operator=SearchOperator.AND,
+                            value=term.strip()
+                        ))
         
         return components
 
@@ -201,11 +225,12 @@ class MetadataParser:
                         sub_components=sub_components
                     ))
             else:
-                # Simple value filter
+                # Simple value filter - convert to string if needed
+                str_value = str(value) if not isinstance(value, (str, list, dict)) else value
                 components.append(QueryComponent(
                     operator=SearchOperator.AND,
                     field=field,
-                    value=value
+                    value=str_value
                 ))
         
         return components
