@@ -52,7 +52,9 @@ def get_connection_url() -> str:
     # Construct URL based on database type
     if db_type == "sqlite":
         if db_host == ":memory:" or not db_host:
-            return "sqlite:///:memory:"
+            # Use query parameters to add cache=shared for better concurrency 
+            # and to prevent file creation with UUIDs in memory mode
+            return "sqlite:///:memory:?cache=shared&mode=memory"
         return f"sqlite:///{db_host}"
     
     # For PostgreSQL and MySQL, include user/password if provided

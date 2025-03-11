@@ -193,34 +193,42 @@ def temp_db_path() -> Generator[str, None, None]:
     """
     Create a temporary SQLite database path for tests.
     
-    This uses a file in our managed directory rather than a :memory: database,
-    which prevents issues with SQLite memory databases being created as real
-    files with :memory: prefixes.
+    By default, this uses an in-memory database with shared cache for better isolation
+    between test runs while preventing the creation of temporary files in the root directory.
+    
+    For tests that require actual file persistence, set the environment variable
+    TEST_DB_FILE=1 before running the test.
     
     Returns:
         Path to a temporary SQLite database that will be cleaned up after the test.
     """
-    # Create a unique file in our tmp/test_dbs folder
-    base_dir = Path(__file__).parent / "tmp" / "test_dbs"
-    base_dir.mkdir(parents=True, exist_ok=True)
-    
-    db_file = base_dir / f"test_db_{uuid.uuid4().hex}.sqlite"
-    
-    # Convert to string for SQLAlchemy
-    db_path = f"sqlite:///{db_file}"
-    
-    try:
+    # Check if we should use a file-based database
+    if os.environ.get("TEST_DB_FILE") == "1":
+        # Create a unique file in our tmp/test_dbs folder
+        base_dir = Path(__file__).parent / "tmp" / "test_dbs"
+        base_dir.mkdir(parents=True, exist_ok=True)
+        
+        db_file = base_dir / f"test_db_{uuid.uuid4().hex}.sqlite"
+        
+        # Convert to string for SQLAlchemy
+        db_path = f"sqlite:///{db_file}"
+        
+        try:
+            yield db_path
+        finally:
+            # Cleanup the database file
+            if db_file.exists():
+                try:
+                    db_file.unlink()
+                except (PermissionError, OSError):
+                    # If can't delete immediately (e.g., Windows file locks),
+                    # mark for deletion on next run
+                    with open(base_dir / "_cleanup_list.txt", "a") as f:
+                        f.write(f"{db_file}\n")
+    else:
+        # Use in-memory database with shared cache to prevent leaking files
+        db_path = "sqlite:///:memory:?cache=shared&mode=memory"
         yield db_path
-    finally:
-        # Cleanup the database file
-        if db_file.exists():
-            try:
-                db_file.unlink()
-            except (PermissionError, OSError):
-                # If can't delete immediately (e.g., Windows file locks),
-                # mark for deletion on next run
-                with open(base_dir / "_cleanup_list.txt", "a") as f:
-                    f.write(f"{db_file}\n")
 
 
 @pytest.fixture(scope="session", autouse=True)
