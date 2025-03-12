@@ -1,0 +1,66 @@
+{
+  "avg_response_time": 4.128,
+  "max_response_time": 6.35,
+  "response_times_by_pattern": {
+    "simple": {
+      "avg": 4.15,
+      "min": 4.05,
+      "max": 4.34
+    },
+    "complex": {
+      "avg": 6.15,
+      "min": 6.05,
+      "max": 6.35
+    },
+    "field": {
+      "avg": 2.03,
+      "min": 1.99,
+      "max": 2.1
+    },
+    "combined": {
+      "avg": 4.21,
+      "min": 4.04,
+      "max": 4.37
+    },
+    "nested": {
+      "avg": 4.1,
+      "min": 4.05,
+      "max": 4.16
+    }
+  },
+  "initial_memory_mb": 165.77,
+  "max_memory_increase_mb": 0.0,
+  "max_memory": 165.77,
+  "max_concurrency": 50,
+  "concurrent_response_time": 0.04,
+  "max_throughput": 24283.84,
+  "concurrency_data": {
+    "1": {
+      "avg_response_ms": 0.09,
+      "max_response_ms": 0.09,
+      "throughput_qps": 6052.39
+    },
+    "5": {
+      "avg_response_ms": 0.05,
+      "max_response_ms": 0.06,
+      "throughput_qps": 16552.11
+    },
+    "10": {
+      "avg_response_ms": 0.04,
+      "max_response_ms": 0.04,
+      "throughput_qps": 21687.2
+    },
+    "20": {
+      "avg_response_ms": 0.04,
+      "max_response_ms": 0.04,
+      "throughput_qps": 22023.12
+    },
+    "50": {
+      "avg_response_ms": 0.04,
+      "max_response_ms": 0.05,
+      "throughput_qps": 24283.84
+    }
+  },
+  "timestamp": "2025-03-12T08:19:12.934979",
+  "test_name": "search_performance"
+}

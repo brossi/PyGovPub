@@ -13,6 +13,8 @@ PyGovPub simplifies access to legislative and regulatory data, providing a unifi
 - **Authentication Management**: Automatic API key handling and rate limit tracking
 - **Mock Server**: Local development without consuming API quotas
 - **Record/Replay**: Record real API responses for testing and development
+- **High-Performance**: Optimized search with field indexing and nested queries
+- **Performance Monitoring**: Comprehensive performance tracking and reporting
 
 ## Installation
 
@@ -89,6 +91,19 @@ For detailed documentation, see:
 - [Mock Server Guide](docs/mock_server.md)
 - [Authentication](docs/authentication.md)
 - [Data Models](docs/data_models.md)
+- [Performance Testing Guide](docs/performance/README.md)
+
+## Performance Testing
+
+PyGovPub includes comprehensive performance testing and monitoring:
+
+```bash
+# Run performance tests and generate reports
+python tests/performance/run_performance_report.py
+
+# View performance reports
+open tests/performance/metrics/history/performance_report.html
+```
 
 ## License
 

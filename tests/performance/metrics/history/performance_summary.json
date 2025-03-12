@@ -1,0 +1,55 @@
+{
+  "search_performance": {
+    "last_run": "2025-03-12T08:19:21.640667",
+    "history": [
+      {
+        "timestamp": "2025-03-12T08:19:12.934979",
+        "metrics": {
+          "search_response_time": 4.128,
+          "throughput": 0,
+          "memory_usage": 165.77,
+          "concurrent_performance": 0
+        }
+      },
+      {
+        "timestamp": "2025-03-12T08:19:21.640667",
+        "metrics": {
+          "search_response_time": 4.13,
+          "throughput": 0,
+          "memory_usage": 178.91,
+          "concurrent_performance": 0
+        }
+      }
+    ],
+    "trend": {
+      "search_response_time": {
+        "recent": 4.13,
+        "baseline": 4.128,
+        "average": 4.129,
+        "percent_change": 0.04844961240309544,
+        "direction": "insufficient data"
+      },
+      "throughput": {
+        "recent": 0,
+        "baseline": 0,
+        "average": 0,
+        "percent_change": 0,
+        "direction": "insufficient data"
+      },
+      "memory_usage": {
+        "recent": 178.91,
+        "baseline": 165.77,
+        "average": 172.34,
+        "percent_change": 7.9266453519937174,
+        "direction": "insufficient data"
+      },
+      "concurrent_performance": {
+        "recent": 0,
+        "baseline": 0,
+        "average": 0,
+        "percent_change": 0,
+        "direction": "insufficient data"
+      }
+    }
+  }
+}
