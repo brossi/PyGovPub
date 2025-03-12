@@ -24,12 +24,19 @@ class TestSchemaRegistry:
         mock_conn = MagicMock()
         mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
         
-        # Create registry
-        registry = SchemaRegistry(mock_storage)
+        # Create registry with properly mocked inspector
+        with patch('sqlalchemy.inspect') as mock_inspect:
+            inspector = MagicMock()
+            inspector.get_table_names.return_value = []  # Table doesn't exist yet
+            mock_inspect.return_value = inspector
+            
+            registry = SchemaRegistry(mock_storage)
         
-        # Verify table creation
-        mock_conn.execute.assert_called_once()
-        assert "CREATE TABLE IF NOT EXISTS schema_versions" in str(mock_conn.execute.call_args)
+            # Verify table creation
+            mock_conn.execute.assert_called_once()
+            # Check that the text contains the CREATE TABLE statement
+            sql_text = mock_conn.execute.call_args[0][0].text
+            assert "CREATE TABLE IF NOT EXISTS schema_versions" in sql_text
     
     def test_ensure_version_table_sqlite(self):
         """Test creation of schema_versions table in SQLite."""
@@ -39,12 +46,19 @@ class TestSchemaRegistry:
         mock_conn = MagicMock()
         mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
         
-        # Create registry
-        registry = SchemaRegistry(mock_storage)
+        # Create registry with properly mocked inspector
+        with patch('sqlalchemy.inspect') as mock_inspect:
+            inspector = MagicMock()
+            inspector.get_table_names.return_value = []  # Table doesn't exist yet
+            mock_inspect.return_value = inspector
+            
+            registry = SchemaRegistry(mock_storage)
         
-        # Verify table creation
-        mock_conn.execute.assert_called_once()
-        assert "CREATE TABLE IF NOT EXISTS schema_versions" in str(mock_conn.execute.call_args)
+            # Verify table creation
+            mock_conn.execute.assert_called_once()
+            # Check that the text contains the CREATE TABLE statement
+            sql_text = mock_conn.execute.call_args[0][0].text
+            assert "CREATE TABLE IF NOT EXISTS schema_versions" in sql_text
     
     def test_ensure_version_table_cloud_provider(self):
         """Test that cloud providers skip schema_versions table creation."""
@@ -339,3 +353,172 @@ class TestSchemaRegistry:
         # Verify compatibility based on storage features
         assert compatibility["vector_search"] is True  # Should be True for Pinecone
         assert compatibility["database_events"] is False  # Not in features
+        
+    def test_is_compatible_with_api_version(self):
+        """Test checking compatibility with specific API version."""
+        # Mock storage interface
+        mock_storage = MagicMock()
+        mock_storage.db_type = "postgresql"
+        mock_conn = MagicMock()
+        
+        # Mock result for API version required schema
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = 3  # API version requires schema version 3
+        mock_conn.execute.return_value = mock_result
+        mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
+        
+        # Create registry
+        registry = SchemaRegistry(mock_storage)
+        
+        # Mock current version to be 5 (> required 3)
+        registry.get_current_version = MagicMock(return_value=5)
+        
+        # Check API compatibility
+        result = registry.is_compatible_with_api_version("1.0.0")
+        
+        # Should be compatible (current 5 > required 3)
+        assert result is True
+        mock_conn.execute.assert_called_once()
+        assert "api_version = :api_version" in str(mock_conn.execute.call_args[0][0])
+        
+        # Test incompatible case
+        mock_result.scalar.return_value = 7  # API version requires schema version 7
+        registry.get_current_version.return_value = 5  # Current version 5 < required 7
+        
+        # Reset mock to avoid counting previous call
+        mock_conn.execute.reset_mock()
+        
+        # Check API compatibility
+        result = registry.is_compatible_with_api_version("2.0.0")
+        
+        # Should be incompatible (current 5 < required 7)
+        assert result is False
+        
+    def test_is_compatible_with_api_version_cloud_provider(self):
+        """Test API version compatibility for cloud providers."""
+        # Mock storage interface for cloud provider
+        mock_storage = MagicMock()
+        mock_storage.db_type = "pinecone"
+        
+        # Create registry
+        registry = SchemaRegistry(mock_storage)
+        
+        # Check API compatibility
+        result = registry.is_compatible_with_api_version("1.0.0")
+        
+        # Cloud providers are always compatible
+        assert result is True
+        
+    def test_get_required_features(self):
+        """Test getting required features for an API version."""
+        # Mock storage interface
+        mock_storage = MagicMock()
+        mock_storage.db_type = "postgresql"
+        mock_conn = MagicMock()
+        
+        # Mock result with components from two schema versions
+        mock_result = MagicMock()
+        mock_result.__iter__.return_value = [
+            (json.dumps(["feature:vector_search", "table:documents"]),),
+            (json.dumps(["feature:full_text_search", "table:search_index"]),)
+        ]
+        mock_conn.execute.return_value = mock_result
+        mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
+        
+        # Create registry
+        registry = SchemaRegistry(mock_storage)
+        
+        # Get required features
+        features = registry.get_required_features("1.0.0")
+        
+        # Verify extracted features
+        assert isinstance(features, set)
+        assert len(features) == 2
+        assert "vector_search" in features
+        assert "full_text_search" in features
+        
+    def test_get_required_features_cloud_provider(self):
+        """Test getting required features for cloud providers."""
+        # Mock storage interface for cloud provider
+        mock_storage = MagicMock()
+        mock_storage.db_type = "pinecone"
+        
+        # Create registry
+        registry = SchemaRegistry(mock_storage)
+        
+        # Get required features
+        features = registry.get_required_features("1.0.0")
+        
+        # Cloud providers don't use features registry
+        assert isinstance(features, set)
+        assert len(features) == 0
+        
+    def test_verify_migrations(self):
+        """Test verification of migration sequence."""
+        # Mock storage interface
+        mock_storage = MagicMock()
+        mock_storage.db_type = "postgresql"
+        mock_conn = MagicMock()
+        
+        # Mock result with sequential migrations
+        mock_result1 = MagicMock()
+        mock_result1.__iter__.return_value = [
+            (1, "2023-01-01", "First migration", "abc123"),
+            (2, "2023-01-02", "Second migration", "def456"),
+            (3, "2023-01-03", "Third migration", "ghi789")
+        ]
+        
+        mock_conn.execute.return_value = mock_result1
+        mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
+        
+        # Create registry
+        registry = SchemaRegistry(mock_storage)
+        
+        # Reset mock to avoid counting initialization calls
+        mock_conn.execute.reset_mock()
+        mock_conn.execute.return_value = mock_result1
+        
+        # Verify migrations
+        valid, problems = registry.verify_migrations()
+        
+        # Should be valid (no gaps)
+        assert valid is True
+        assert len(problems) == 0
+        mock_conn.execute.assert_called_once()
+        
+        # Now test with non-sequential migrations
+        mock_result2 = MagicMock()
+        mock_result2.__iter__.return_value = [
+            (1, "2023-01-01", "First migration", "abc123"),
+            (2, "2023-01-02", "Second migration", "def456"),
+            (4, "2023-01-04", "Fourth migration", "jkl012")  # Gap at 3
+        ]
+        
+        mock_conn.execute.reset_mock()
+        mock_conn.execute.return_value = mock_result2
+        
+        # Verify migrations
+        valid, problems = registry.verify_migrations()
+        
+        # Should be invalid (gap at version 3)
+        assert valid is False
+        assert len(problems) == 1
+        assert problems[0]["version"] == 4
+        assert "expected 3" in problems[0]["issue"]
+        mock_conn.execute.assert_called_once()
+        
+    def test_verify_migrations_cloud_provider(self):
+        """Test migration verification for cloud providers."""
+        # Mock storage interface for cloud provider
+        mock_storage = MagicMock()
+        mock_storage.db_type = "pinecone"
+        
+        # Create registry
+        registry = SchemaRegistry(mock_storage)
+        
+        # Verify migrations
+        valid, problems = registry.verify_migrations()
+        
+        # Cloud providers always return valid
+        assert valid is True
+        assert len(problems) == 0
