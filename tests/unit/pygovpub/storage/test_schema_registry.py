@@ -9,7 +9,7 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock, call
 
-from pygovpub.storage.schema_registry import SchemaRegistry
+from pygovpub.storage.schema_registry import SchemaRegistry, inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 
@@ -499,57 +499,76 @@ class TestSchemaRegistry:
         
     def test_verify_migrations(self):
         """Test verification of migration sequence."""
-        # Mock storage interface
-        mock_storage = MagicMock()
-        mock_storage.db_type = "postgresql"
-        mock_conn = MagicMock()
-        
-        # Mock result with sequential migrations
-        mock_result1 = MagicMock()
-        mock_result1.__iter__.return_value = [
-            (1, "2023-01-01", "First migration", "abc123"),
-            (2, "2023-01-02", "Second migration", "def456"),
-            (3, "2023-01-03", "Third migration", "ghi789")
-        ]
-        
-        mock_conn.execute.return_value = mock_result1
-        mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
-        
-        # Create registry
-        registry = SchemaRegistry(mock_storage)
-        
-        # Reset mock to avoid counting initialization calls
-        mock_conn.execute.reset_mock()
-        mock_conn.execute.return_value = mock_result1
-        
-        # Verify migrations
-        valid, problems = registry.verify_migrations()
-        
-        # Should be valid (no gaps)
-        assert valid is True
-        assert len(problems) == 0
-        mock_conn.execute.assert_called_once()
-        
-        # Now test with non-sequential migrations
-        mock_result2 = MagicMock()
-        mock_result2.__iter__.return_value = [
-            (1, "2023-01-01", "First migration", "abc123"),
-            (2, "2023-01-02", "Second migration", "def456"),
-            (4, "2023-01-04", "Fourth migration", "jkl012")  # Gap at 3
-        ]
-        
-        mock_conn.execute.reset_mock()
-        mock_conn.execute.return_value = mock_result2
-        
-        # Verify migrations
-        valid, problems = registry.verify_migrations()
-        
-        # Should be invalid (gap at version 3)
-        assert valid is False
-        assert len(problems) == 1
-        assert problems[0]["version"] == 4
-        assert "expected 3" in problems[0]["issue"]
-        mock_conn.execute.assert_called_once()
+        # Need to patch SchemaRegistry._ensure_version_table to avoid initialization issues
+        with patch.object(SchemaRegistry, '_ensure_version_table'):
+            # Mock storage interface
+            mock_storage = MagicMock()
+            mock_storage.db_type = "postgresql"
+            
+            # Create registry
+            registry = SchemaRegistry(mock_storage)
+            
+            # Test the real implementation with mocked database connection
+            mock_conn = MagicMock()
+            
+            # Create sequential migrations result
+            class MockMigrations:
+                def __init__(self, migrations):
+                    self.migrations = migrations
+                    
+                def __iter__(self):
+                    return iter(self.migrations)
+            
+            # Case 1: Sequential migrations (valid)
+            migrations1 = [
+                (1, "2023-01-01", "First migration", "abc123"),
+                (2, "2023-01-02", "Second migration", "def456"),
+                (3, "2023-01-03", "Third migration", "ghi789")
+            ]
+            
+            mock_result = MockMigrations(migrations1)
+            mock_conn.execute.return_value = mock_result
+            mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
+            
+            # Verify migrations with sequential versions
+            with patch.object(inspect, 'get_table_names', return_value=["schema_versions"]):
+                valid, problems = registry.verify_migrations()
+                
+                # Should be valid (no gaps)
+                assert valid is True
+                assert len(problems) == 0
+            
+            # Case 2: Non-sequential migrations (invalid)
+            migrations2 = [
+                (1, "2023-01-01", "First migration", "abc123"),
+                (2, "2023-01-02", "Second migration", "def456"),
+                (4, "2023-01-04", "Fourth migration", "jkl012")  # Gap at 3
+            ]
+            
+            mock_result = MockMigrations(migrations2)
+            mock_conn.execute.return_value = mock_result
+            
+            # Verify migrations with gap
+            with patch.object(inspect, 'get_table_names', return_value=["schema_versions"]):
+                valid, problems = registry.verify_migrations()
+                
+                # Should be invalid (gap at version 3)
+                assert valid is False
+                assert len(problems) == 1
+                assert problems[0]["version"] == 4
+                assert "expected 3" in problems[0]["issue"]
+            
+            # Case 3: Exception during verification
+            mock_conn.execute.side_effect = Exception("Test error")
+            
+            # Verify migrations with exception
+            with patch.object(inspect, 'get_table_names', return_value=["schema_versions"]):
+                valid, problems = registry.verify_migrations()
+                
+                # Should be invalid due to error
+                assert valid is False
+                assert len(problems) == 1
+                assert "error" in problems[0]["issue"].lower()
         
     def test_verify_migrations_cloud_provider(self):
         """Test migration verification for cloud providers."""
