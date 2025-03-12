@@ -2,15 +2,14 @@
 Database partitioning utilities for PyGovPub.
 
 This module provides tools for creating and managing PostgreSQL table partitions,
-which improve query performance by dividing large tables into smaller, more manageable
-pieces based on ranges, lists, or hashes.
+which improve query performance by dividing large tables into smaller, 
+more manageable pieces based on ranges, lists, or hashes.
 """
 
 import logging
-from typing import Dict, List, Any, Optional, Union, Tuple
-from datetime import date, datetime
+from typing import Dict, List, Any, Optional, Union
+from datetime import date
 
-import sqlalchemy
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
