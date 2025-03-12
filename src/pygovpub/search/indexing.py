@@ -160,14 +160,22 @@ class DocumentIndexer(Indexer[Dict[str, Any]]):
         else:
             # Convert to hashable if necessary
             if isinstance(value, dict):
-                # Can't index dictionaries directly, so convert to string
-                value = str(value)
-            
-            # Add to field index
-            key = (field, value)
-            if key not in self.field_index:
-                self.field_index[key] = set()
-            self.field_index[key].add(document_id)
+                # For dictionaries, index each field recursively
+                for key, val in value.items():
+                    nested_field = f"{field}.{key}"
+                    self._index_field(document_id, nested_field, val)
+                # Also index the full dict as a string for direct matches
+                str_value = str(value)
+                key = (field, str_value)
+                if key not in self.field_index:
+                    self.field_index[key] = set()
+                self.field_index[key].add(document_id)
+            else:
+                # Add to field index
+                key = (field, value)
+                if key not in self.field_index:
+                    self.field_index[key] = set()
+                self.field_index[key].add(document_id)
     
     async def index_document(self, document: Dict[str, Any]) -> DocumentId:
         """Index a document.
@@ -331,5 +339,15 @@ class DocumentIndexer(Indexer[Dict[str, Any]]):
         Returns:
             Set of matching document IDs
         """
+        # Handle different value types for comparison
+        if isinstance(value, dict):
+            value = str(value)
+            
+        # Direct field match
         key = (field, value)
-        return self.field_index.get(key, set())
+        direct_matches = self.field_index.get(key, set())
+        
+        # Log debugging info
+        logger.debug(f"Field search: {field}={value}, found {len(direct_matches)} direct matches")
+        
+        return direct_matches

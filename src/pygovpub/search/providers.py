@@ -96,6 +96,9 @@ class LocalProvider(SearchProvider):
         Returns:
             Document ID
         """
+        # Log the document being added
+        logger.debug(f"Adding document: id={id}, type={type.value}, metadata={metadata}")
+        
         # Create a document dictionary
         doc = {
             "id": id,
@@ -104,11 +107,19 @@ class LocalProvider(SearchProvider):
             "title": title,
             "content": content,
             "url": metadata.get("url"),
-            **metadata
         }
+        
+        # Add metadata as a separate field and also as individual fields
+        doc["metadata"] = metadata.copy()
+        
+        # Also add metadata directly to the top level for backward compatibility
+        for key, value in metadata.items():
+            if key not in doc:  # Don't overwrite existing fields
+                doc[key] = value
         
         # Index the document
         await self.indexer.index_document(doc)
+        logger.debug(f"Successfully indexed document: {id}")
         return id
     
     async def search(self, query: SearchQuery) -> SearchResults:
@@ -130,8 +141,13 @@ class LocalProvider(SearchProvider):
             if component.field:
                 # Field search
                 if component.value is not None:
+                    # Log the search operation
+                    logger.debug(f"Searching field: {component.field}={component.value}")
+                    
+                    # Perform the field search
                     doc_ids = await self.indexer.search_field(component.field, component.value)
                     
+                    # Apply the operator to the result set
                     if first_component:
                         matching_docs = doc_ids
                         first_component = False
@@ -141,11 +157,19 @@ class LocalProvider(SearchProvider):
                         matching_docs |= doc_ids
                     elif component.operator.value == "NOT":
                         matching_docs -= doc_ids
+                    
+                    # Log the current match count
+                    logger.debug(f"After {component.field} search: {len(matching_docs)} matches")
             else:
                 # Text search
                 if component.value:
+                    # Log the search operation
+                    logger.debug(f"Searching text: {component.value}")
+                    
+                    # Perform the text search
                     doc_ids = await self.indexer.search_text(str(component.value))
                     
+                    # Apply the operator to the result set
                     if first_component:
                         matching_docs = doc_ids
                         first_component = False
@@ -155,10 +179,15 @@ class LocalProvider(SearchProvider):
                         matching_docs |= doc_ids
                     elif component.operator.value == "NOT":
                         matching_docs -= doc_ids
+                    
+                    # Log the current match count
+                    logger.debug(f"After text search: {len(matching_docs)} matches")
         
         # If no components were processed, use raw query text
         if first_component and query.query_text:
+            logger.debug(f"Using raw query text: {query.query_text}")
             matching_docs = await self.indexer.search_text(query.query_text)
+            logger.debug(f"Raw query matches: {len(matching_docs)}")
         
         # Convert matching docs to results
         results = []
