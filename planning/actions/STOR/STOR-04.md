@@ -8,7 +8,7 @@
 [i] - Implement: Router-specific connection pooling
 [*] - Test: Verify LanceDB table creation with 4 schema types
 [*] - Test: Verify versioned schema application
-[ ] - Test: Verify cross-provider data migration
+[*] - Test: Verify cross-provider data migration
 [ ] - Test: Verify hybrid index initialization
 [ ] - Test: Verify provider-specific connection pooling
 [*] - Test: Verify LanceDB feature flag integration

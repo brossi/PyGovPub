@@ -41,6 +41,9 @@ T = TypeVar("T")
 
 class LanceDBProvider:
     """LanceDB storage provider implementation"""
+    
+    # Provider type for interface identification
+    db_type = "lancedb"
 
     def __init__(self,
                 uri: str = None,
@@ -641,3 +644,63 @@ class LanceDBProvider:
             
             logger.error(f"Error applying schema version {version} to table {table_name}", error=str(e))
             return False
+            
+    def migrate_to_provider(self, table_name: str, target_provider, model_class, 
+                          limit: int = None, batch_size: int = 100) -> int:
+        """
+        Migrate data from this LanceDB instance to another provider.
+        
+        Args:
+            table_name: Source table name
+            target_provider: Target provider instance
+            model_class: Model class for the data
+            limit: Optional limit on number of records to migrate
+            batch_size: Batch size for processing records
+            
+        Returns:
+            Number of records migrated
+        """
+        try:
+            # Get table
+            table = self._get_or_create_table(table_name)
+            
+            # Start query
+            query = table.search()
+            
+            # Apply limit if provided
+            if limit:
+                query = query.limit(limit)
+            
+            # Execute query
+            result = query.to_pandas()
+            
+            # Process results
+            records = []
+            for _, row in result.iterrows():
+                record = row.to_dict()
+                
+                # Parse metadata from JSON
+                if "metadata" in record and isinstance(record["metadata"], str):
+                    try:
+                        record["metadata"] = json.loads(record["metadata"])
+                    except json.JSONDecodeError:
+                        logger.warning(f"Could not parse metadata JSON for record {record.get('id', 'unknown')}")
+                
+                records.append(record)
+            
+            # Create records in target provider in batches
+            migrated_count = 0
+            for i in range(0, len(records), batch_size):
+                batch = records[i:i+batch_size]
+                
+                for record in batch:
+                    # Create record in target provider
+                    target_provider.create(model_class, record)
+                    migrated_count += 1
+            
+            logger.info(f"Migrated {migrated_count} records from {table_name}")
+            return migrated_count
+            
+        except Exception as e:
+            logger.error(f"Error migrating data from {table_name}", error=str(e))
+            raise

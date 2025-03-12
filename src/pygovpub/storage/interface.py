@@ -703,6 +703,133 @@ class StorageInterface:
             DB_OPERATIONS.labels(operation=f"hybrid_search_{provider_type}", status="error", db_type=provider_type).inc()
             logger.error(f"Failed to perform hybrid search with {provider_type}", error=str(e))
             raise
+            
+    def migrate_to_provider(self, 
+                           table_name: str,
+                           target_provider,
+                           model_class: Type[T],
+                           embedding_field: str = None,
+                           embedding_generator = None,
+                           content_field: str = None,
+                           limit: int = None,
+                           batch_size: int = 100,
+                           schema_version: str = None) -> int:
+        """
+        Migrate data from SQL database to a different provider.
+        
+        Args:
+            table_name: Source table name
+            target_provider: Target provider instance
+            model_class: Model class for the data
+            embedding_field: Field to store embeddings (for vector databases)
+            embedding_generator: Optional function to generate embeddings from content
+            content_field: Field containing text content for embedding generation
+            limit: Optional limit on number of records to migrate
+            batch_size: Batch size for processing records
+            schema_version: Optional schema version to apply to target
+            
+        Returns:
+            Number of records migrated
+        """
+        # Validate provider-specific parameters
+        if embedding_generator and not content_field:
+            raise ValueError("content_field must be specified when embedding_generator is provided")
+            
+        if self.db_type in ["lancedb"]:
+            # For non-SQL databases, use their provider's migrate method if available
+            if self._providers.get(self.db_type) and hasattr(self._providers[self.db_type], "migrate_to_provider"):
+                return self._providers[self.db_type].migrate_to_provider(
+                    table_name,
+                    target_provider,
+                    model_class,
+                    limit=limit,
+                    batch_size=batch_size
+                )
+            else:
+                raise ValueError(f"Provider {self.db_type} does not support migration")
+        
+        # For SQL databases, use SQL query to extract data
+        if self.db_type not in ["sqlite", "postgresql", "mysql"]:
+            raise ValueError(f"Unsupported source database type: {self.db_type}")
+            
+        start_time = time.time()
+        
+        try:
+            # Track operation
+            DB_OPERATIONS.labels(
+                operation=f"migrate_to_{getattr(target_provider, 'db_type', 'unknown')}",
+                status="processing", 
+                db_type=self.db_type
+            ).inc()
+            
+            # Get all records from source table
+            connection = self._get_sql_connection()
+            
+            # Construct query
+            query = text(f"SELECT * FROM {table_name}")
+            if limit:
+                query = text(f"SELECT * FROM {table_name} LIMIT {limit}")
+                
+            result = connection.execute(query)
+            
+            # Process results and generate embeddings if needed
+            migrated_count = 0
+            batch = []
+            
+            for row in result:
+                # Convert to dict
+                record = dict(row)
+                
+                # Generate embedding if needed
+                if embedding_generator and content_field and content_field in record:
+                    embedding = embedding_generator(record[content_field])
+                    record[embedding_field] = embedding
+                
+                batch.append(record)
+                
+                # Process in batches
+                if len(batch) >= batch_size:
+                    # Apply schema version if provided
+                    if schema_version and hasattr(target_provider, "apply_schema_version"):
+                        target_provider.apply_schema_version(table_name, schema_version)
+                    
+                    # Process batch
+                    for item in batch:
+                        target_provider.create(model_class, item)
+                        migrated_count += 1
+                    
+                    # Clear batch
+                    batch = []
+            
+            # Process any remaining records
+            if batch:
+                for item in batch:
+                    target_provider.create(model_class, item)
+                    migrated_count += 1
+            
+            DB_OPERATIONS.labels(
+                operation=f"migrate_to_{getattr(target_provider, 'db_type', 'unknown')}",
+                status="success", 
+                db_type=self.db_type
+            ).inc()
+            
+            DB_OPERATION_DURATION.labels(
+                operation=f"migrate_to_{getattr(target_provider, 'db_type', 'unknown')}",
+                db_type=self.db_type
+            ).observe(time.time() - start_time)
+            
+            logger.info(f"Migrated {migrated_count} records from {table_name} to {getattr(target_provider, 'db_type', 'unknown')}")
+            return migrated_count
+            
+        except Exception as e:
+            DB_OPERATIONS.labels(
+                operation=f"migrate_to_{getattr(target_provider, 'db_type', 'unknown')}",
+                status="error", 
+                db_type=self.db_type
+            ).inc()
+            
+            logger.error(f"Failed to migrate data to {getattr(target_provider, 'db_type', 'unknown')}", error=str(e))
+            raise
 
     @CONNECTION_CIRCUIT_BREAKER
     @retry(
