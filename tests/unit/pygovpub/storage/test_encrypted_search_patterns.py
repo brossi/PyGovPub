@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 import json
 from datetime import datetime
+import re
 
 from pygovpub.storage.security import StorageSecurity
 from pygovpub.storage.secure_search_fallback import SecureSearchFallback
