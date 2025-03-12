@@ -194,7 +194,7 @@ class DocumentPackageCreate(DocumentPackageBase):
     package_id: str
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "package_id": "BILLS-117hr1234ih",
                 "document_type": "bill",
@@ -214,7 +214,7 @@ class DocumentPackageUpdate(SQLModel):
     digital_signature: Optional[str] = None
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "last_modified_date": "2023-03-02",
                 "digital_signature": "updated_signature"
@@ -230,7 +230,7 @@ class DocumentPackageResponse(DocumentPackageBase):
 
     class Config:
         orm_mode = True
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "package_id": "BILLS-117hr1234ih",
                 "document_type": "bill",

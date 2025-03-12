@@ -34,13 +34,13 @@ router = APIRouter(
 # Response models
 class CfrTitleResponse(BaseModel):
     """CFR title response model."""
-    
+
     title_number: int = Field(..., description="CFR title number")
     title_name: str = Field(..., description="CFR title name")
     chapters: Optional[List[Dict[str, Any]]] = Field(None, description="Chapters in this title")
-    
+
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "title_number": 40,
                 "title_name": "Protection of Environment",
@@ -56,10 +56,10 @@ class CfrTitleResponse(BaseModel):
 
 class CfrDocumentResponse(BaseModel):
     """CFR document response model."""
-    
+
     package_id: str = Field(..., description="GovInfo package ID")
     title_number: int = Field(..., description="CFR title number")
-    title_name: str = Field(..., description="CFR title name") 
+    title_name: str = Field(..., description="CFR title name")
     part_number: Optional[int] = Field(None, description="CFR part number")
     section_number: Optional[str] = Field(None, description="CFR section number")
     heading: Optional[str] = Field(None, description="Section heading")
@@ -68,9 +68,9 @@ class CfrDocumentResponse(BaseModel):
     pdf_url: Optional[str] = Field(None, description="URL to PDF version")
     xml_url: Optional[str] = Field(None, description="URL to XML version")
     html_url: Optional[str] = Field(None, description="URL to HTML version")
-    
+
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "package_id": "CFR-2023-title40-vol1",
                 "title_number": 40,
@@ -89,7 +89,7 @@ class CfrDocumentResponse(BaseModel):
 
 class CfrSearchResponse(BaseModel):
     """CFR search response model."""
-    
+
     count: int = Field(..., description="Total number of results")
     offset: int = Field(..., description="Result offset")
     limit: int = Field(..., description="Result limit")
@@ -110,10 +110,10 @@ async def list_cfr_titles(
     try:
         # Get GovInfo client
         govinfo_client = api_router.get_client(ApiSource.GOVINFO)
-        
+
         # Get the titles from the CFR collection directly
         cfr_titles_data = await govinfo_client.get_cfr_titles()
-        
+
         # Format response
         titles = []
         for title in cfr_titles_data.get("titles", []):
@@ -122,7 +122,7 @@ async def list_cfr_titles(
                 title_name=title.get("name"),
                 chapters=title.get("chapters")
             ))
-        
+
         return titles
     except SourceUnavailableError as e:
         logger.error(f"Source unavailable for CFR titles: {e}")
@@ -154,13 +154,13 @@ async def get_cfr_title(
                 status_code=400,
                 detail=f"Invalid title number: {title_number}. Must be between 1 and 50."
             )
-        
+
         # Get GovInfo client
         govinfo_client = api_router.get_client(ApiSource.GOVINFO)
-        
+
         # Get CFR title information
         title_data = await govinfo_client.get_cfr_title(title_number=title_number, year=year)
-        
+
         # Format response
         return CfrTitleResponse(
             title_number=title_data.get("number"),
@@ -200,18 +200,18 @@ async def search_cfr(
     try:
         # Get GovInfo client
         govinfo_client = api_router.get_client(ApiSource.GOVINFO)
-        
+
         # Build search parameters
         search_params = {
             "collection": "CFR",
             "offset": offset,
             "limit": limit
         }
-        
+
         # Add optional parameters
         if year:
             search_params["year"] = year
-        
+
         # Build a more specific query if title, part, or section specified
         query_parts = []
         if query:
@@ -222,13 +222,13 @@ async def search_cfr(
             query_parts.append(f"part:{part}")
         if section:
             query_parts.append(f"section:{section}")
-        
+
         if query_parts:
             search_params["query"] = " AND ".join(query_parts)
-        
+
         # Search for CFR documents
         search_results = await govinfo_client.search_packages(**search_params)
-        
+
         # Format results
         results = []
         for doc in search_results.get("packages", []):
@@ -238,10 +238,10 @@ async def search_cfr(
             part_number = None
             section_number = None
             year_value = None
-            
+
             # Try to extract structured data from package ID and metadata
             package_id = doc.get("packageId", "")
-            
+
             # CFR package IDs often have format like "CFR-2023-title40-vol1"
             if package_id.startswith("CFR-"):
                 parts = package_id.split("-")
@@ -250,7 +250,7 @@ async def search_cfr(
                         year_value = int(parts[1])
                     except ValueError:
                         pass
-                    
+
                     # Try to extract title from the ID
                     title_part = next((p for p in parts if p.startswith("title")), None)
                     if title_part:
@@ -258,7 +258,7 @@ async def search_cfr(
                             title_number = int(title_part[5:])  # Remove "title" prefix
                         except ValueError:
                             pass
-            
+
             # Extract other metadata from additional fields
             metadata = doc.get("metadata", {})
             if not title_name:
@@ -280,10 +280,10 @@ async def search_cfr(
                     year_value = int(metadata.get("year"))
                 except (ValueError, TypeError):
                     pass
-            
+
             # Download URLs
             download_urls = doc.get("download", {})
-            
+
             # Create response object
             results.append(CfrDocumentResponse(
                 package_id=package_id,
@@ -298,7 +298,7 @@ async def search_cfr(
                 xml_url=download_urls.get("xmlLink"),
                 html_url=download_urls.get("htmlLink")
             ))
-        
+
         return CfrSearchResponse(
             count=search_results.get("count", len(results)),
             offset=offset,
@@ -331,20 +331,20 @@ async def get_cfr_content(
     try:
         # Get GovInfo client
         govinfo_client = api_router.get_client(ApiSource.GOVINFO)
-        
+
         # Validate that this is a CFR document
         if not package_id.startswith("CFR-"):
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid CFR package ID: {package_id}. Must start with 'CFR-'."
             )
-        
+
         # Get package content
         content = await govinfo_client.get_package_content(
             package_id=package_id,
             content_type=content_type
         )
-        
+
         return {
             "package_id": package_id,
             "content_type": content.get("content_type", "text/html"),

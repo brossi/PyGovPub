@@ -34,7 +34,7 @@ router = APIRouter(
 # Response models
 class DocumentResponse(BaseModel):
     """Document response model."""
-    
+
     package_id: str = Field(..., description="GovInfo package ID")
     title: str = Field(..., description="Document title")
     collection: str = Field(..., description="Document collection")
@@ -45,9 +45,9 @@ class DocumentResponse(BaseModel):
     html_url: Optional[str] = Field(None, description="URL to HTML version")
     mods_url: Optional[str] = Field(None, description="URL to MODS metadata")
     details_url: Optional[str] = Field(None, description="URL to document details")
-    
+
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "package_id": "BILLS-117hr1234ih",
                 "title": "Example Bill Title",
@@ -65,7 +65,7 @@ class DocumentResponse(BaseModel):
 
 class DocumentSearchResponse(BaseModel):
     """Document search response model."""
-    
+
     count: int = Field(..., description="Total number of results")
     offset: int = Field(..., description="Result offset")
     limit: int = Field(..., description="Result limit")
@@ -74,14 +74,14 @@ class DocumentSearchResponse(BaseModel):
 
 class CollectionResponse(BaseModel):
     """Collection response model."""
-    
+
     collection_code: str = Field(..., description="Collection code")
     collection_name: str = Field(..., description="Collection name")
     package_count: Optional[int] = Field(None, description="Number of packages in collection")
     description: Optional[str] = Field(None, description="Collection description")
-    
+
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "collection_code": "BILLS",
                 "collection_name": "Congressional Bills",
@@ -105,10 +105,10 @@ async def list_collections(
     try:
         # Get GovInfo client
         govinfo_client = api_router.get_client(ApiSource.GOVINFO)
-        
+
         # Get collections
         collections_data = await govinfo_client.list_collections()
-        
+
         # Format response
         collections = []
         for collection in collections_data.get("collections", []):
@@ -118,7 +118,7 @@ async def list_collections(
                 package_count=collection.get("package_count"),
                 description=collection.get("description")
             ))
-        
+
         return collections
     except SourceUnavailableError as e:
         logger.error(f"Source unavailable for listing collections: {e}")
@@ -128,6 +128,44 @@ async def list_collections(
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.exception(f"Unexpected error listing collections: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+
+@router.get(
+    "/collections/{collection_code}",
+    response_model=CollectionResponse,
+    summary="Get collection information",
+    description="Retrieve detailed information about a specific collection"
+)
+async def get_collection(
+    collection_code: str = Path(..., description="Collection code"),
+    api_router: ApiRouter = Depends()
+):
+    """Get collection information by collection code."""
+    try:
+        # Get GovInfo client
+        govinfo_client = api_router.get_client(ApiSource.GOVINFO)
+
+        # Get collection information
+        collection_data = await govinfo_client.get_collection(collection_code=collection_code)
+
+        # Format response
+        return CollectionResponse(
+            collection_code=collection_data.get("collection_code", collection_code),
+            collection_name=collection_data.get("collection_name", ""),
+            package_count=collection_data.get("package_count"),
+            description=collection_data.get("description")
+        )
+    except SourceUnavailableError as e:
+        logger.error(f"Source unavailable for collection {collection_code}: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except ApiError as e:
+        logger.error(f"API error getting collection {collection_code}: {e}")
+        if "Not Found" in str(e):
+            raise HTTPException(status_code=404, detail=f"Collection {collection_code} not found")
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Unexpected error getting collection {collection_code}: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
@@ -145,13 +183,13 @@ async def get_document(
     try:
         # Get GovInfo client
         govinfo_client = api_router.get_client(ApiSource.GOVINFO)
-        
+
         # Get package summary
         package_data = await govinfo_client.get_package_summary(package_id=package_id)
-        
+
         # Format response
         download_urls = package_data.get("download", {})
-        
+
         return DocumentResponse(
             package_id=package_id,
             title=package_data.get("title", ""),
@@ -186,19 +224,21 @@ async def get_document(
 async def get_document_content(
     package_id: str = Path(..., description="GovInfo package ID"),
     content_type: Optional[str] = Query("html", description="Content type (html, pdf, xml, mods)"),
+    granule_id: Optional[str] = Query(None, description="Granule ID for documents with granules"),
     api_router: ApiRouter = Depends()
 ):
     """Get document content."""
     try:
         # Get GovInfo client
         govinfo_client = api_router.get_client(ApiSource.GOVINFO)
-        
+
         # Get package content
         content = await govinfo_client.get_package_content(
             package_id=package_id,
-            content_type=content_type
+            content_type=content_type,
+            granule_id=granule_id
         )
-        
+
         return {
             "package_id": package_id,
             "content_type": content.get("content_type", "text/html"),
@@ -237,13 +277,13 @@ async def search_documents(
     try:
         # Get GovInfo client
         govinfo_client = api_router.get_client(ApiSource.GOVINFO)
-        
+
         # Prepare search parameters
         search_params = {
             "offset": offset,
             "limit": limit
         }
-        
+
         if collection:
             search_params["collection"] = collection
         if start_date:
@@ -252,10 +292,10 @@ async def search_documents(
             search_params["end_date"] = end_date
         if query:
             search_params["query"] = query
-        
+
         # Execute search
         search_results = await govinfo_client.search_packages(**search_params)
-        
+
         # Format results
         documents = []
         for doc in search_results.get("packages", []):
@@ -272,7 +312,7 @@ async def search_documents(
                 mods_url=download_urls.get("modsLink"),
                 details_url=doc.get("detailsLink")
             ))
-        
+
         return DocumentSearchResponse(
             count=search_results.get("count", len(documents)),
             offset=offset,

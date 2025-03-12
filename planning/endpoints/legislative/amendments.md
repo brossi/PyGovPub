@@ -114,7 +114,7 @@ class AmendmentCreate(AmendmentBase):
     bill_id: str
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "amendment_number": "123",
                 "amendment_type": "house",
@@ -129,7 +129,7 @@ class AmendmentUpdate(SQLModel):
     introduced_date: Optional[datetime]
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "status": "REPORTED",
                 "introduced_date": "2023-03-01T00:00:00Z"
@@ -150,7 +150,7 @@ class AmendmentResponse(AmendmentBase):
 
     class Config:
         orm_mode = True
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "amendment_id": "HAMDT123",
                 "congress_id": 117,

@@ -141,7 +141,7 @@ class BillCreate(BillBase):
     congress_id: conint(gt=0)
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "bill_type": "hr",
                 "bill_number": 1234,
@@ -158,7 +158,7 @@ class BillUpdate(SQLModel):
     last_action_date: Optional[date] = None
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "status": "INTRODUCED",
                 "last_action_date": "2023-03-01"
@@ -176,7 +176,7 @@ class BillResponse(BillBase):
 
     class Config:
         orm_mode = True
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "bill_id": "HR1234-117",
                 "congress_id": 117,

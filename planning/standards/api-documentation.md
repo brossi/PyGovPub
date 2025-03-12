@@ -61,7 +61,7 @@ class BillResponse(SQLModel):
     )
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "bill_id": "HR1234-117",
                 "congress_id": 117,

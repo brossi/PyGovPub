@@ -209,7 +209,7 @@ class MemberCreate(MemberBase):
     member_id: str
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "member_id": "A000374",
                 "first_name": "Alma",
@@ -227,7 +227,7 @@ class MemberUpdate(SQLModel):
     state: Optional[str] = None
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "leadership_role": "Speaker of the House",
                 "state": "CA"
@@ -247,7 +247,7 @@ class MemberResponse(MemberBase):
 
     class Config:
         orm_mode = True
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "member_id": "A000374",
                 "first_name": "Alma",

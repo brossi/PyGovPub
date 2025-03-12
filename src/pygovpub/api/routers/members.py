@@ -1,7 +1,7 @@
 """
 Members API Router.
 
-This module provides FastAPI routes for accessing congressional member 
+This module provides FastAPI routes for accessing congressional member
 information from Congress.gov API.
 """
 
@@ -34,7 +34,7 @@ router = APIRouter(
 # Response models
 class MemberResponse(BaseModel):
     """Member response model."""
-    
+
     bioguide_id: str = Field(..., description="Bioguide ID")
     first_name: str = Field(..., description="First name")
     last_name: str = Field(..., description="Last name")
@@ -45,9 +45,9 @@ class MemberResponse(BaseModel):
     term_start: Optional[str] = Field(None, description="Term start date")
     term_end: Optional[str] = Field(None, description="Term end date")
     url: Optional[str] = Field(None, description="URL to member's page")
-    
+
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "bioguide_id": "S000148",
                 "first_name": "Chuck",
@@ -65,7 +65,7 @@ class MemberResponse(BaseModel):
 
 class MemberSearchResponse(BaseModel):
     """Member search response model."""
-    
+
     count: int = Field(..., description="Total number of results")
     offset: int = Field(..., description="Result offset")
     limit: int = Field(..., description="Result limit")
@@ -91,7 +91,7 @@ async def get_member(
             method="get_member",
             bioguide_id=bioguide_id
         )
-        
+
         # Convert to response model
         return MemberResponse(
             bioguide_id=member_data.get("bioguide_id", bioguide_id),
@@ -139,13 +139,13 @@ async def search_members(
     try:
         # Get Congress client
         congress_client = api_router.get_client(ApiSource.CONGRESS)
-        
+
         # Prepare search parameters
         search_params = {
             "offset": offset,
             "limit": limit
         }
-        
+
         if congress:
             search_params["congress"] = congress
         if chamber:
@@ -156,10 +156,10 @@ async def search_members(
             search_params["party"] = party
         if name:
             search_params["name"] = name
-        
+
         # Execute search
         search_results = await congress_client.search_members(**search_params)
-        
+
         # Format results
         members = []
         for member in search_results.get("members", []):
@@ -175,7 +175,7 @@ async def search_members(
                 term_end=member.get("term_end"),
                 url=member.get("url")
             ))
-        
+
         return MemberSearchResponse(
             count=search_results.get("pagination", {}).get("count", len(members)),
             offset=offset,
@@ -217,23 +217,23 @@ async def get_member_sponsored_bills(
             "offset": offset,
             "limit": limit
         }
-        
+
         if congress:
             params["congress"] = congress
-        
+
         # Route request
         bills_data = await api_router.route_request(
             request_type="member",
             method="get_member_sponsored_bills",
             **params
         )
-        
+
         # Process results (format similar to bill search response)
         bills = []
         for bill in bills_data.get("bills", []):
             # Normalize bill data
             normalized = api_router._normalize_congress_bill(bill)
-            
+
             bills.append({
                 "bill_id": normalized.get("id", ""),
                 "title": normalized.get("title", ""),
@@ -242,7 +242,7 @@ async def get_member_sponsored_bills(
                 "latest_action": normalized.get("latest_action", {}),
                 "source_url": normalized.get("source_url", "")
             })
-        
+
         return {
             "bioguide_id": bioguide_id,
             "congress": congress,
@@ -262,4 +262,73 @@ async def get_member_sponsored_bills(
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.exception(f"Unexpected error getting sponsored bills for member {bioguide_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+
+@router.get(
+    "/{bioguide_id}/cosponsored-bills",
+    response_model=Dict[str, Any],
+    summary="Get member cosponsored bills",
+    description="Retrieve bills cosponsored by a specific member of Congress"
+)
+async def get_member_cosponsored_bills(
+    bioguide_id: str = Path(..., description="Bioguide ID"),
+    congress: Optional[int] = Query(None, description="Congress number"),
+    offset: int = Query(0, description="Result offset"),
+    limit: int = Query(20, description="Result limit"),
+    api_router: ApiRouter = Depends()
+):
+    """Get bills cosponsored by a member."""
+    try:
+        # Prepare parameters
+        params = {
+            "bioguide_id": bioguide_id,
+            "offset": offset,
+            "limit": limit
+        }
+
+        if congress:
+            params["congress"] = congress
+
+        # Route request
+        bills_data = await api_router.route_request(
+            request_type="member",
+            method="get_member_cosponsored_bills",
+            **params
+        )
+
+        # Process results (format similar to bill search response)
+        bills = []
+        for bill in bills_data.get("bills", []):
+            # Normalize bill data
+            normalized = api_router._normalize_congress_bill(bill)
+
+            bills.append({
+                "bill_id": normalized.get("id", ""),
+                "title": normalized.get("title", ""),
+                "introduced_date": normalized.get("introduced_date"),
+                "status": normalized.get("status", ""),
+                "latest_action": normalized.get("latest_action", {}),
+                "source_url": normalized.get("source_url", "")
+            })
+
+        return {
+            "bioguide_id": bioguide_id,
+            "congress": congress,
+            "count": bills_data.get("pagination", {}).get("count", len(bills)),
+            "offset": offset,
+            "limit": limit,
+            "bills": bills
+        }
+    except RouteNotFoundError as e:
+        logger.error(f"Route not found for cosponsored bills of member {bioguide_id}: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except SourceUnavailableError as e:
+        logger.error(f"Source unavailable for cosponsored bills of member {bioguide_id}: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except ApiError as e:
+        logger.error(f"API error getting cosponsored bills for member {bioguide_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Unexpected error getting cosponsored bills for member {bioguide_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")

@@ -176,6 +176,39 @@ def schema(args: Optional[List[str]] = typer.Argument(None)):
     else:
         parser.print_help()
 
+# API server command
+@app.command("serve")
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to run on"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload"),
+    workers: int = typer.Option(1, "--workers", help="Number of worker processes"),
+    log_level: str = typer.Option("info", "--log-level", help="Log level"),
+):
+    """Run the FastAPI server."""
+    try:
+        import uvicorn
+    except ImportError:
+        console.print("[red]Error: uvicorn package is required to run the API server.[/red]")
+        console.print("[yellow]Please install it with: pip install uvicorn[/yellow]")
+        return
+    
+    console.print(Panel.fit(
+        f"Starting PyGovPub API server on [cyan]http://{host}:{port}[/cyan]",
+        title="PyGovPub API",
+        border_style="cyan"
+    ))
+    
+    # Run the server
+    uvicorn.run(
+        "pygovpub.api.app:app",
+        host=host,
+        port=port,
+        reload=reload,
+        workers=workers,
+        log_level=log_level
+    )
+
 # Mock server command
 @app.command("mock")
 def mock(

@@ -1,0 +1,43 @@
+{
+  "api_source": "govinfo",
+  "endpoint": "collections/bills",
+  "schema": {
+    "$schema": "http://json-schema.org/schema#",
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "integer"
+      },
+      "offset": {
+        "type": "integer"
+      },
+      "pageSize": {
+        "type": "integer"
+      },
+      "nextPage": {
+        "type": "null"
+      },
+      "previousPage": {
+        "type": "null"
+      },
+      "packages": {
+        "type": "array"
+      }
+    },
+    "required": [
+      "count",
+      "nextPage",
+      "offset",
+      "packages",
+      "pageSize",
+      "previousPage"
+    ]
+  },
+  "version": {
+    "version_string": "v2",
+    "schema_hash": "f150c496a415b4dc",
+    "first_seen": "2025-03-11T21:02:31.789406+00:00",
+    "last_seen": "2025-03-11T21:02:31.789407+00:00",
+    "is_supported": true
+  }
+}

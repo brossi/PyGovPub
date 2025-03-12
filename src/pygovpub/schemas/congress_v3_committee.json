@@ -1,0 +1,82 @@
+{
+  "api_source": "congress",
+  "endpoint": "v3/committee",
+  "schema": {
+    "$schema": "http://json-schema.org/schema#",
+    "type": "object",
+    "properties": {
+      "pagination": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "nextPage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "nextPage"
+        ]
+      },
+      "request": {
+        "type": "object",
+        "properties": {
+          "contentType": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "contentType",
+          "format"
+        ]
+      },
+      "results": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "chamber": {
+              "type": "string"
+            },
+            "systemCode": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "updateDate": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "chamber",
+            "name",
+            "systemCode",
+            "updateDate",
+            "url"
+          ]
+        }
+      }
+    },
+    "required": [
+      "pagination",
+      "request",
+      "results"
+    ]
+  },
+  "version": {
+    "version_string": "v3",
+    "schema_hash": "256b4969a3c88ac3",
+    "first_seen": "2025-03-11T21:01:34.830931+00:00",
+    "last_seen": "2025-03-11T21:01:34.830933+00:00",
+    "is_supported": true
+  }
+}

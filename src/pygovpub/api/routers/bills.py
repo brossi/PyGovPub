@@ -24,42 +24,42 @@ logger = logging.getLogger("pygovpub.api.routers.bills")
 def parse_bill_id(bill_id: str) -> Tuple[str, int, int]:
     """
     Parse a bill ID in the format {type}{number}-{congress} and return its components.
-    
+
     The bill ID format must be "{type}{number}-{congress}" where:
     - {type} is a letter code (e.g., 'hr' for House Resolution)
     - {number} is the bill number (an integer)
     - {congress} is the Congress number (an integer)
-    
+
     Examples:
         "hr1234-117" -> ("hr", 1234, 117)
         "s42-116" -> ("s", 42, 116)
-    
+
     Args:
         bill_id: The bill ID to parse
-        
+
     Returns:
         Tuple containing (bill_type, bill_number, congress)
-        
+
     Raises:
         HTTPException: If the bill ID is invalid or malformed
     """
     # Check for empty or None input
     if not bill_id:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="Bill ID cannot be empty"
         )
-        
+
     # Split into components
     parts = bill_id.split("-")
     if len(parts) != 2:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="Invalid bill ID format. Expected: {type}{number}-{congress}"
         )
-    
+
     bill_number_type = parts[0]
-    
+
     # Validate congress number
     try:
         congress = int(parts[1])
@@ -71,20 +71,20 @@ def parse_bill_id(bill_id: str) -> Tuple[str, int, int]:
             )
     except ValueError:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Invalid bill ID format: Congress must be a number, got '{parts[1]}'"
         )
-    
+
     # Validate bill type and number format
     bill_type_match = re.match(r"([a-z]+)(\d+)", bill_number_type)
     if not bill_type_match:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="Invalid bill ID format. Expected: {type}{number}-{congress}"
         )
-    
+
     bill_type = bill_type_match.group(1)
-    
+
     # Validate bill type is recognized
     valid_bill_types = ['hr', 's', 'hjres', 'sjres', 'hconres', 'sconres', 'hres', 'sres']
     if bill_type not in valid_bill_types:
@@ -92,7 +92,7 @@ def parse_bill_id(bill_id: str) -> Tuple[str, int, int]:
             status_code=400,
             detail=f"Invalid bill type: {bill_type}. Must be one of {', '.join(valid_bill_types)}"
         )
-    
+
     # Validate bill number
     try:
         bill_number = int(bill_type_match.group(2))
@@ -104,10 +104,10 @@ def parse_bill_id(bill_id: str) -> Tuple[str, int, int]:
             )
     except ValueError:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Invalid bill ID format: Bill number must be a number, got '{bill_type_match.group(2)}'"
         )
-    
+
     return bill_type, bill_number, congress
 
 
@@ -126,7 +126,7 @@ router = APIRouter(
 # Response models
 class BillResponse(BaseModel):
     """Bill response model."""
-    
+
     bill_id: str = Field(..., description="Unique bill identifier")
     congress: int = Field(..., description="Congress number")
     bill_type: str = Field(..., description="Bill type")
@@ -136,9 +136,9 @@ class BillResponse(BaseModel):
     status: Optional[str] = Field(None, description="Current bill status")
     latest_action: Optional[Dict[str, Any]] = Field(None, description="Latest action on bill")
     source_url: Optional[str] = Field(None, description="URL to bill on source website")
-    
+
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "bill_id": "hr1234-117",
                 "congress": 117,
@@ -158,7 +158,7 @@ class BillResponse(BaseModel):
 
 class BillSearchResponse(BaseModel):
     """Bill search response model."""
-    
+
     count: int = Field(..., description="Total number of results")
     offset: int = Field(..., description="Result offset")
     limit: int = Field(..., description="Result limit")
@@ -179,16 +179,16 @@ async def get_bill(
     """Get bill information by ID."""
     # Parse the bill ID into its components
     bill_type, bill_number, congress = parse_bill_id(bill_id)
-    
+
     try:
-        
+
         # Get bill from API router
         normalized_bill = await api_router.get_normalized_bill(
             congress=congress,
             bill_type=bill_type,
             bill_number=bill_number
         )
-        
+
         # Convert to response model
         return BillResponse(
             bill_id=bill_id,  # Use provided bill_id instead of normalized_bill.get("id", "")
@@ -235,27 +235,27 @@ async def search_bills_by_congress(
     try:
         # Get Congress client
         congress_client = api_router.get_client(ApiSource.CONGRESS)
-        
+
         # Call search_bills method
         search_params = {
             "congress": congress,
             "offset": offset,
             "limit": limit
         }
-        
+
         if bill_type:
             search_params["bill_type"] = bill_type
-        
+
         search_results = await congress_client.search_bills(**search_params)
-        
+
         # Convert to response model
         bills = []
         for bill in search_results.get("bills", []):
             normalized = api_router._normalize_congress_bill(bill)
-            
+
             # Extract bill ID parts safely
             bill_id = normalized.get("id", "")
-            
+
             # If we have a valid bill ID, try to parse it using our utility function
             # If it fails, use default values as fallback
             try:
@@ -264,25 +264,25 @@ async def search_bills_by_congress(
                 else:
                     # Handle missing ID with defaults
                     bill_type_str = ""
-                    bill_number = 0 
+                    bill_number = 0
                     congress_num = 0
             except HTTPException:
                 # Use a fallback approach for malformed IDs
                 parts = bill_id.split("-") if bill_id else []
                 bill_number_type = parts[0] if len(parts) > 0 else ""
-                
+
                 bill_type_match = re.match(r"([a-z]+)(\d+)", bill_number_type) if bill_number_type else None
                 bill_type_str = bill_type_match.group(1) if bill_type_match else ""
                 try:
                     bill_number = int(bill_type_match.group(2)) if bill_type_match else 0
                 except (ValueError, IndexError):
                     bill_number = 0
-                
+
                 try:
                     congress_num = int(parts[1]) if len(parts) > 1 else 0
                 except (ValueError, IndexError):
                     congress_num = 0
-            
+
             bills.append(BillResponse(
                 bill_id=bill_id,
                 congress=congress_num,
@@ -294,7 +294,7 @@ async def search_bills_by_congress(
                 latest_action=normalized.get("latest_action", {}),
                 source_url=normalized.get("source_url", "")
             ))
-        
+
         return BillSearchResponse(
             count=search_results.get("pagination", {}).get("count", len(bills)),
             offset=offset,
@@ -337,12 +337,12 @@ async def get_bill_text(
     except HTTPException as e:
         # Reraise the exception directly to preserve the status code
         raise e
-        
+
     try:
-        
+
         # Get GovInfo client
         govinfo_client = api_router.get_client(ApiSource.GOVINFO)
-        
+
         # Resolve bill package ID
         package_id = await govinfo_client.resolve_bill_package_id(
             congress=congress,
@@ -350,10 +350,10 @@ async def get_bill_text(
             bill_number=bill_number,
             version_code=version_code
         )
-        
+
         # Get bill content
         content = await govinfo_client.get_package_content(package_id=package_id)
-        
+
         return {
             "bill_id": bill_id,
             "version_code": version_code,
@@ -397,9 +397,9 @@ async def get_bill_status(
     except HTTPException as e:
         # Reraise the exception directly to preserve the status code
         raise e
-        
+
     try:
-        
+
         # Route request
         status_data = await api_router.route_request(
             request_type="bill",
@@ -408,7 +408,7 @@ async def get_bill_status(
             bill_type=bill_type,
             bill_number=bill_number
         )
-        
+
         # Format response
         return {
             "bill_id": bill_id,

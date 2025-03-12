@@ -159,7 +159,7 @@ class CommitteeCreate(CommitteeBase):
     parent_committee_id: Optional[str] = None
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "committee_id": "HSAG",
                 "name": "House Committee on Agriculture",
@@ -174,7 +174,7 @@ class CommitteeUpdate(SQLModel):
     url: Optional[str] = None
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "name": "Updated Committee Name",
                 "url": "https://agriculture.house.gov"
@@ -194,7 +194,7 @@ class CommitteeResponse(CommitteeBase):
 
     class Config:
         orm_mode = True
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "committee_id": "HSAG",
                 "name": "House Committee on Agriculture",

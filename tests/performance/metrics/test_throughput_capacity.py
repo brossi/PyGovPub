@@ -421,6 +421,32 @@ async def test_search_throughput_with_real_server():
     # Search endpoints typically have lower throughput requirements due to complexity
     assert test_results['throughput'] >= MIN_THROUGHPUT_QPS / 2, \
         f"Search throughput {test_results['throughput']:.2f} qps below minimum requirement"
+        
+    # Record metrics to history
+    try:
+        from tests.performance.metrics.performance_history import record_performance_metrics, generate_trend_charts
+        
+        # Record this test's metrics
+        record_metrics = {
+            "completed_requests": test_results['completed_requests'],
+            "throughput": test_results['throughput'],
+            "avg_response_time": test_results['avg_response_time'],
+            "max_concurrency": test_results['max_concurrency'],
+        }
+        
+        metrics_file = record_performance_metrics(
+            "search_api_throughput", 
+            record_metrics
+        )
+        print(f"Throughput metrics recorded to: {metrics_file}")
+        
+        # Generate trend charts across all metrics
+        trend_charts = generate_trend_charts()
+        if trend_charts:
+            print(f"Generated {len(trend_charts)} performance trend charts")
+    except ImportError:
+        # Silently continue if history module isn't available
+        pass
 
 
 if __name__ == "__main__":

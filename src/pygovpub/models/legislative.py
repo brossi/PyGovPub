@@ -294,6 +294,7 @@ class Committee(BaseModel):
     congress: int
     
     # Committee details
+    committee_type: Optional[str] = None  # "standing", "joint", etc.
     jurisdiction: Optional[str] = None
     website: Optional[HttpUrl] = None
     

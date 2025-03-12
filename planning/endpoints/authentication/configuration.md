@@ -116,7 +116,7 @@ class ConfigurationError(AuthError):
 class ApiConfigCreate(ApiConfigBase):
     """Model for API configuration creation requests"""
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "api_source": "govinfo",
                 "config_key": "rate_limit_buffer",
@@ -131,7 +131,7 @@ class ApiConfigUpdate(SQLModel):
     is_active: Optional[bool] = None
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "config_value": "200",
                 "is_active": True
@@ -145,7 +145,7 @@ class ApiConfigResponse(ApiConfigBase):
 
     class Config:
         orm_mode = True
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "config_id": 1,
                 "api_source": "govinfo",
@@ -164,7 +164,7 @@ class ApiUsageResponse(SQLModel):
     reset_at: Optional[datetime]
 
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "api_source": "govinfo",
                 "requests_made": 500,

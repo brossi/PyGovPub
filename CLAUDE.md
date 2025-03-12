@@ -122,7 +122,7 @@ Located in `planning` :
 - phronesis.md: Knowledge repository
 
 ### Implementation Phases
-Located in `planning/actions` these are the individual, sequentially numbered phases of development we are currently engaged with.
+Located in `planning/actions` these are the individual, sequentially numbered phases of development we are currently engaged with. We are currently working on phase 1-16-db002, so focus there once you've had a chance to review the overall project structure.
 
 ### Standards & API Specs
 Located in `planning/standards` :
@@ -143,7 +143,7 @@ Located in `planning/dev-references` :
 ## Development Process
 
 ### Quality Requirements
-1. Full test suite passing
+1. Full test suite passing, TDD so write your tests first and then develop the features to pass them
 2. 80%+ coverage (100% critical)
 3. All gates passed
 4. Documentation complete

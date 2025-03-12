@@ -37,14 +37,14 @@ router = APIRouter(
 # Response models
 class MetadataField(BaseModel):
     """Metadata field model for search results."""
-    
+
     name: str = Field(..., description="Field name")
     value: Optional[Union[str, int, bool, List[str], Dict[str, Any]]] = Field(None, description="Field value")
     display_name: Optional[str] = Field(None, description="Human-readable field name")
     field_type: Optional[str] = Field(None, description="Field data type")
-    
+
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "name": "dateIssued",
                 "value": "2023-01-15",
@@ -56,7 +56,7 @@ class MetadataField(BaseModel):
 
 class SearchResult(BaseModel):
     """Generic search result model."""
-    
+
     source: str = Field(..., description="Source API (govinfo, congress)")
     document_type: str = Field(..., description="Document type")
     document_id: str = Field(..., description="Document identifier")
@@ -66,9 +66,9 @@ class SearchResult(BaseModel):
     url: Optional[str] = Field(None, description="URL to document")
     metadata: List[MetadataField] = Field(default_factory=list, description="Additional metadata fields")
     highlights: Optional[Dict[str, List[str]]] = Field(None, description="Highlighted search terms in context")
-    
+
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "source": "govinfo",
                 "document_type": "BILL",
@@ -101,15 +101,15 @@ class SearchResult(BaseModel):
 
 class MetadataSearchResponse(BaseModel):
     """Metadata search response model."""
-    
+
     count: int = Field(..., description="Total number of results")
     offset: int = Field(..., description="Result offset")
     limit: int = Field(..., description="Result limit")
     results: List[SearchResult] = Field(..., description="Search results")
     facets: Optional[Dict[str, Dict[str, int]]] = Field(None, description="Search facets for filtering")
-    
+
     class Config:
-        schema_extra = {
+       json_schema_extra = {
             "example": {
                 "count": 125,
                 "offset": 0,
@@ -150,7 +150,7 @@ class MetadataSearchResponse(BaseModel):
 
 class CombinedSearchResponse(BaseModel):
     """Combined search response model for cross-source search."""
-    
+
     count: int = Field(..., description="Total number of results")
     offset: int = Field(..., description="Result offset")
     limit: int = Field(..., description="Result limit")
@@ -189,13 +189,13 @@ async def search_by_metadata(
             clients["govinfo"] = api_router.get_client(ApiSource.GOVINFO)
         if source == "congress" or source is None:
             clients["congress"] = api_router.get_client(ApiSource.CONGRESS)
-        
+
         # Build search parameters
         search_params = {
             "offset": offset,
             "limit": limit
         }
-        
+
         # Add metadata filters
         if document_type:
             search_params["document_type"] = document_type
@@ -211,19 +211,19 @@ async def search_by_metadata(
             search_params["cfr_title"] = cfr_title
         if court:
             search_params["court"] = court
-        
+
         # Create an empty response structure
         results = []
         facets = {} if include_facets else None
         total_count = 0
-        
+
         # Process search for each client
         for source_name, client in clients.items():
             try:
                 # Build source-specific search query
                 source_params = search_params.copy()
                 source_params["source"] = source_name
-                
+
                 # Execute search
                 if source_name == "govinfo":
                     # For GovInfo, we need to build a more complex metadata query
@@ -237,33 +237,33 @@ async def search_by_metadata(
                             metadata_query.append("collectionCode:CFR")
                             if cfr_title:
                                 metadata_query.append(f"title:{cfr_title}")
-                    
+
                     # Add date range to query
                     if start_date and end_date:
                         metadata_query.append(f"dateIssued:[{start_date} TO {end_date}]")
-                    
+
                     # For bills, add congress and type if specified
                     if document_type == "BILL" and congress:
                         metadata_query.append(f"congress:{congress}")
                     if document_type == "BILL" and bill_type:
                         metadata_query.append(f"billType:{bill_type}")
-                    
+
                     # For court opinions, add court if specified
                     if document_type == "COURT_OPINION" and court:
                         metadata_query.append(f"court:{court}")
-                    
+
                     # Convert to query string
                     if metadata_query:
                         source_params["query"] = " AND ".join(metadata_query)
-                    
+
                     # Execute search on GovInfo
                     search_results = await client.search_packages(**source_params)
-                    
+
                     # Process results
                     for doc in search_results.get("packages", []):
                         # Create metadata fields list
                         metadata_fields_list = []
-                        
+
                         # Extract metadata fields
                         for key, value in doc.get("metadata", {}).items():
                             metadata_fields_list.append(MetadataField(
@@ -271,7 +271,7 @@ async def search_by_metadata(
                                 value=value,
                                 display_name=key.replace("_", " ").title()
                             ))
-                        
+
                         # Add to results
                         results.append(SearchResult(
                             source=source_name,
@@ -282,23 +282,23 @@ async def search_by_metadata(
                             url=doc.get("detailsLink"),
                             metadata=metadata_fields_list
                         ))
-                    
+
                     # Update count
                     total_count += search_results.get("count", 0)
-                    
+
                     # Add facets if requested
                     if include_facets and "facets" in search_results:
                         # Merge with existing facets
                         for facet_name, facet_values in search_results.get("facets", {}).items():
                             if facet_name not in facets:
                                 facets[facet_name] = {}
-                            
+
                             for value, count in facet_values.items():
                                 if value in facets[facet_name]:
                                     facets[facet_name][value] += count
                                 else:
                                     facets[facet_name][value] = count
-                
+
                 elif source_name == "congress":
                     # For Congress API, use different endpoint based on document type
                     if document_type == "BILL":
@@ -307,20 +307,20 @@ async def search_by_metadata(
                             "offset": offset,
                             "limit": limit
                         }
-                        
+
                         if congress:
                             bill_params["congress"] = congress
                         if bill_type:
                             bill_params["bill_type"] = bill_type
-                        
+
                         # Execute search
                         search_results = await client.search_bills(**bill_params)
-                        
+
                         # Process results
                         for bill in search_results.get("bills", []):
                             # Create metadata fields list
                             metadata_fields_list = []
-                            
+
                             # Add key metadata fields
                             if "congress" in bill:
                                 metadata_fields_list.append(MetadataField(
@@ -329,7 +329,7 @@ async def search_by_metadata(
                                     display_name="Congress",
                                     field_type="integer"
                                 ))
-                            
+
                             if "type" in bill:
                                 metadata_fields_list.append(MetadataField(
                                     name="billType",
@@ -337,7 +337,7 @@ async def search_by_metadata(
                                     display_name="Bill Type",
                                     field_type="string"
                                 ))
-                            
+
                             if "number" in bill:
                                 metadata_fields_list.append(MetadataField(
                                     name="billNumber",
@@ -345,7 +345,7 @@ async def search_by_metadata(
                                     display_name="Bill Number",
                                     field_type="integer"
                                 ))
-                            
+
                             # Add bill sponsor if available
                             if "sponsor" in bill:
                                 sponsor_info = bill.get("sponsor", {})
@@ -355,7 +355,7 @@ async def search_by_metadata(
                                     display_name="Sponsor",
                                     field_type="string"
                                 ))
-                            
+
                             # Add to results
                             results.append(SearchResult(
                                 source=source_name,
@@ -366,28 +366,28 @@ async def search_by_metadata(
                                 url=bill.get("congress_gov_url"),
                                 metadata=metadata_fields_list
                             ))
-                        
+
                         # Update count
                         total_count += search_results.get("count", 0)
-                    
+
                     elif document_type == "MEMBER":
                         # Search members
                         member_params = {
                             "offset": offset,
                             "limit": limit
                         }
-                        
+
                         if congress:
                             member_params["congress"] = congress
-                        
+
                         # Execute search
                         search_results = await client.search_members(**member_params)
-                        
+
                         # Process results
                         for member in search_results.get("members", []):
                             # Create metadata fields list
                             metadata_fields_list = []
-                            
+
                             # Add key metadata fields
                             if "chamber" in member:
                                 metadata_fields_list.append(MetadataField(
@@ -396,7 +396,7 @@ async def search_by_metadata(
                                     display_name="Chamber",
                                     field_type="string"
                                 ))
-                            
+
                             if "state" in member:
                                 metadata_fields_list.append(MetadataField(
                                     name="state",
@@ -404,7 +404,7 @@ async def search_by_metadata(
                                     display_name="State",
                                     field_type="string"
                                 ))
-                            
+
                             if "party" in member:
                                 metadata_fields_list.append(MetadataField(
                                     name="party",
@@ -412,7 +412,7 @@ async def search_by_metadata(
                                     display_name="Party",
                                     field_type="string"
                                 ))
-                            
+
                             # Add to results
                             results.append(SearchResult(
                                 source=source_name,
@@ -422,14 +422,14 @@ async def search_by_metadata(
                                 url=member.get("url"),
                                 metadata=metadata_fields_list
                             ))
-                        
+
                         # Update count
                         total_count += search_results.get("count", 0)
-            
+
             except ApiError as e:
                 logger.warning(f"API error during metadata search for source {source_name}: {e}")
                 # Continue with other sources
-        
+
         # If no results found, return empty response
         if not results:
             return MetadataSearchResponse(
@@ -439,13 +439,13 @@ async def search_by_metadata(
                 results=[],
                 facets=facets
             )
-        
+
         # Sort results by date if available
         results.sort(
             key=lambda x: x.date_issued if x.date_issued else "0000-00-00",
             reverse=True
         )
-        
+
         # Return response
         return MetadataSearchResponse(
             count=total_count,
@@ -488,14 +488,14 @@ async def combined_search(
             clients["govinfo"] = api_router.get_client(ApiSource.GOVINFO)
         if source == "congress" or source is None:
             clients["congress"] = api_router.get_client(ApiSource.CONGRESS)
-        
+
         # Build search parameters
         search_params = {
             "query": query,
             "offset": offset,
             "limit": limit
         }
-        
+
         # Add metadata filters
         if document_type:
             search_params["document_type"] = document_type
@@ -503,29 +503,29 @@ async def combined_search(
             search_params["start_date"] = start_date
         if end_date:
             search_params["end_date"] = end_date
-        
+
         # Create an empty response structure
         results = []
         facets = {} if include_facets else None
         total_count = 0
         source_counts = {"govinfo": 0, "congress": 0}
-        
+
         # Process search for each client
         for source_name, client in clients.items():
             try:
                 # Build source-specific search query
                 source_params = search_params.copy()
-                
+
                 # Execute search
                 if source_name == "govinfo":
                     # Execute search on GovInfo
                     search_results = await client.search_packages(**source_params)
-                    
+
                     # Process results
                     for doc in search_results.get("packages", []):
                         # Create metadata fields list
                         metadata_fields_list = []
-                        
+
                         # Extract metadata fields
                         for key, value in doc.get("metadata", {}).items():
                             metadata_fields_list.append(MetadataField(
@@ -533,12 +533,12 @@ async def combined_search(
                                 value=value,
                                 display_name=key.replace("_", " ").title()
                             ))
-                        
+
                         # Extract highlights if available and requested
                         highlights = None
                         if include_highlights and "highlights" in doc:
                             highlights = doc.get("highlights", {})
-                        
+
                         # Add to results
                         results.append(SearchResult(
                             source=source_name,
@@ -551,40 +551,40 @@ async def combined_search(
                             metadata=metadata_fields_list,
                             highlights=highlights
                         ))
-                    
+
                     # Update counts
                     count = search_results.get("count", 0)
                     total_count += count
                     source_counts["govinfo"] = count
-                    
+
                     # Add facets if requested
                     if include_facets and "facets" in search_results:
                         # Merge with existing facets
                         for facet_name, facet_values in search_results.get("facets", {}).items():
                             if facet_name not in facets:
                                 facets[facet_name] = {}
-                            
+
                             for value, count in facet_values.items():
                                 if value in facets[facet_name]:
                                     facets[facet_name][value] += count
                                 else:
                                     facets[facet_name][value] = count
-                
+
                 elif source_name == "congress":
                     # For Congress API, use combined search endpoint
                     search_results = await client.search(**source_params)
-                    
+
                     # Process results
                     for item in search_results.get("results", []):
                         item_type = item.get("type", "").upper()
-                        
+
                         # Skip if document_type filter doesn't match
                         if document_type and item_type != document_type:
                             continue
-                        
+
                         # Create metadata fields list
                         metadata_fields_list = []
-                        
+
                         # Process based on item type
                         if item_type == "BILL":
                             # Extract bill metadata
@@ -595,7 +595,7 @@ async def combined_search(
                                     display_name="Congress",
                                     field_type="integer"
                                 ))
-                            
+
                             if "bill_type" in item:
                                 metadata_fields_list.append(MetadataField(
                                     name="billType",
@@ -603,7 +603,7 @@ async def combined_search(
                                     display_name="Bill Type",
                                     field_type="string"
                                 ))
-                            
+
                             if "bill_number" in item:
                                 metadata_fields_list.append(MetadataField(
                                     name="billNumber",
@@ -611,7 +611,7 @@ async def combined_search(
                                     display_name="Bill Number",
                                     field_type="integer"
                                 ))
-                        
+
                         elif item_type == "MEMBER":
                             # Extract member metadata
                             if "chamber" in item:
@@ -621,7 +621,7 @@ async def combined_search(
                                     display_name="Chamber",
                                     field_type="string"
                                 ))
-                            
+
                             if "state" in item:
                                 metadata_fields_list.append(MetadataField(
                                     name="state",
@@ -629,7 +629,7 @@ async def combined_search(
                                     display_name="State",
                                     field_type="string"
                                 ))
-                            
+
                             if "party" in item:
                                 metadata_fields_list.append(MetadataField(
                                     name="party",
@@ -637,12 +637,12 @@ async def combined_search(
                                     display_name="Party",
                                     field_type="string"
                                 ))
-                        
+
                         # Extract highlights if available and requested
                         highlights = None
                         if include_highlights and "highlights" in item:
                             highlights = item.get("highlights", {})
-                        
+
                         # Add to results
                         results.append(SearchResult(
                             source=source_name,
@@ -655,22 +655,22 @@ async def combined_search(
                             metadata=metadata_fields_list,
                             highlights=highlights
                         ))
-                    
+
                     # Update counts
                     count = search_results.get("count", 0)
                     total_count += count
                     source_counts["congress"] = count
-            
+
             except ApiError as e:
                 logger.warning(f"API error during combined search for source {source_name}: {e}")
                 # Continue with other sources
-        
+
         # Sort results by relevance score if available, otherwise by date
         results.sort(
             key=lambda x: (x.relevance_score or 0, x.date_issued if x.date_issued else "0000-00-00"),
             reverse=True
         )
-        
+
         # If no results found, return empty response
         if not results:
             return CombinedSearchResponse(
@@ -681,7 +681,7 @@ async def combined_search(
                 facets=facets,
                 source_counts=source_counts
             )
-        
+
         # Return response
         return CombinedSearchResponse(
             count=total_count,
@@ -702,10 +702,10 @@ async def combined_search(
 # Utility methods
 def _determine_document_type(package_id: str) -> str:
     """Determine document type from package ID.
-    
+
     Args:
         package_id: Package ID
-        
+
     Returns:
         Document type string
     """
