@@ -16,7 +16,7 @@ import structlog
 import lancedb
 import pyarrow as pa
 import numpy as np
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Histogram, Gauge
 
 logger = structlog.get_logger()
 
@@ -31,6 +31,11 @@ LANCEDB_OPERATION_DURATION = Histogram(
     "LanceDB operation duration in seconds",
     ["operation", "table"]
 )
+LANCEDB_SCHEMA_VERSION = Gauge(
+    "lancedb_schema_version",
+    "LanceDB schema version for a table",
+    ["table", "version"]
+)
 
 T = TypeVar("T")
 
@@ -41,6 +46,7 @@ class LanceDBProvider:
                 uri: str = None,
                 create_vector_index: bool = True,
                 vector_dim: int = 384,
+                schema_registry=None,
                 **config):
         """
         Initialize LanceDB provider.
@@ -49,10 +55,13 @@ class LanceDBProvider:
             uri: Path to LanceDB database (directory)
             create_vector_index: Whether to create vector index on table creation
             vector_dim: Dimension of vector embeddings (default: 384 for all-MiniLM-L6-v2)
+            schema_registry: Optional schema registry instance for schema management
             **config: Additional configuration options
         """
         self.vector_dim = vector_dim
         self.create_vector_index = create_vector_index
+        self.schema_registry = schema_registry
+        self.schema_adapter = None
 
         # Use temporary directory if no URI provided
         if not uri:
@@ -67,6 +76,15 @@ class LanceDBProvider:
         self.db = lancedb.connect(uri)
         self.config = config
         self.table_info = {}  # Cache table metadata
+
+        # Initialize schema adapter if registry provided
+        if self.schema_registry:
+            try:
+                from pygovpub.storage.providers.lancedb_schema import LanceDBSchemaAdapter
+                self.schema_adapter = LanceDBSchemaAdapter(self, self.schema_registry)
+                logger.info("LanceDB schema adapter initialized")
+            except ImportError as e:
+                logger.warning(f"Could not initialize LanceDB schema adapter: {str(e)}")
 
         logger.info("LanceDB provider initialized", uri=uri)
 
@@ -93,13 +111,14 @@ class LanceDBProvider:
             # Already a dict or something else
             return model_obj
 
-    def _get_or_create_table(self, table_name: str, schema: Optional[pa.Schema] = None):
+    def _get_or_create_table(self, table_name: str, schema: Optional[pa.Schema] = None, schema_version: Optional[str] = None):
         """
         Get or create a LanceDB table with appropriate schema.
         
         Args:
             table_name: Table name
             schema: Optional Arrow schema for new table
+            schema_version: Optional schema version to apply from registry
             
         Returns:
             LanceDB table
@@ -107,10 +126,34 @@ class LanceDBProvider:
         start_time = time.time()
 
         try:
+            # Check if table exists
             if table_name in self.db.table_names():
                 table = self.db.open_table(table_name)
                 logger.debug(f"Opened existing table {table_name}")
+                
+                # Apply schema version if provided and adapter available
+                if schema_version and self.schema_adapter:
+                    self.schema_adapter.apply_schema_version(table_name, schema_version)
+                    # Update metrics
+                    LANCEDB_SCHEMA_VERSION.labels(
+                        table=table_name,
+                        version=schema_version
+                    ).set(1)
             else:
+                # If schema version is provided and adapter available, use that schema
+                if schema_version and self.schema_adapter:
+                    # Get schema from registry
+                    registry_schema = self.schema_registry.get_schema_version(schema_version)
+                    if registry_schema:
+                        schema = self.schema_adapter._convert_schema_version_to_arrow(registry_schema)
+                        logger.info(f"Using schema version {schema_version} for table {table_name}")
+                        # Update metrics
+                        LANCEDB_SCHEMA_VERSION.labels(
+                            table=table_name,
+                            version=schema_version
+                        ).set(1)
+                
+                # Use default schema if none provided
                 if schema is None:
                     # Create a minimal initial schema if none provided
                     schema = pa.schema([
@@ -148,7 +191,8 @@ class LanceDBProvider:
             # Cache table info
             self.table_info[table_name] = {
                 "has_vector_index": self._check_table_has_vector_index(table),
-                "schema": table.schema
+                "schema": table.schema,
+                "version": schema_version
             }
 
             LANCEDB_OPERATION_DURATION.labels(
@@ -540,3 +584,60 @@ class LanceDBProvider:
 
             logger.error(f"Error performing hybrid search in {table_name}", error=str(e))
             raise
+            
+    def apply_schema_version(self, table_name: str, version: str) -> bool:
+        """
+        Apply a schema version from the registry to a table.
+        
+        Args:
+            table_name: Name of the table
+            version: Schema version to apply
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.schema_adapter:
+            logger.error("Schema adapter not initialized, cannot apply schema version")
+            return False
+        
+        try:
+            start_time = time.time()
+            
+            # Apply schema version
+            result = self.schema_adapter.apply_schema_version(table_name, version)
+            
+            if result:
+                # Update metrics
+                LANCEDB_SCHEMA_VERSION.labels(
+                    table=table_name,
+                    version=version
+                ).set(1)
+                
+                # Update table info cache
+                if table_name in self.table_info:
+                    self.table_info[table_name]["version"] = version
+                
+                logger.info(f"Applied schema version {version} to table {table_name}")
+            
+            LANCEDB_OPERATION_DURATION.labels(
+                operation="apply_schema_version",
+                table=table_name
+            ).observe(time.time() - start_time)
+            
+            LANCEDB_OPERATIONS.labels(
+                operation="apply_schema_version",
+                status="success" if result else "failure",
+                table=table_name
+            ).inc()
+            
+            return result
+            
+        except Exception as e:
+            LANCEDB_OPERATIONS.labels(
+                operation="apply_schema_version",
+                status="error",
+                table=table_name
+            ).inc()
+            
+            logger.error(f"Error applying schema version {version} to table {table_name}", error=str(e))
+            return False

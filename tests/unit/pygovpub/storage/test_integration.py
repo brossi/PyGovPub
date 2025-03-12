@@ -11,6 +11,8 @@ from unittest.mock import patch, MagicMock
 
 from pygovpub.storage.interface import StorageInterface
 from pygovpub.storage.providers.lancedb_provider import LanceDBProvider
+from pygovpub.storage.schema_registry import SchemaRegistry
+from pygovpub.storage.providers.lancedb_schema import LanceDBSchemaAdapter
 
 
 class TestLanceDBIntegration:
@@ -173,3 +175,75 @@ class TestLanceDBIntegration:
             )
             assert len(results) == 1
             assert results[0]["content"] == "test content"
+            
+    @patch("pygovpub.storage.providers.lancedb_provider.lancedb")
+    def test_lancedb_schema_integration(self, mock_lancedb):
+        """Test schema registry integration with LanceDB provider."""
+        # Mock LanceDB and its methods
+        mock_db = MagicMock()
+        mock_table = MagicMock()
+        mock_db.table_names.return_value = ["test_table"]
+        mock_db.open_table.return_value = mock_table
+        mock_lancedb.connect.return_value = mock_db
+        
+        # Mock schema registry
+        mock_registry = MagicMock(spec=SchemaRegistry)
+        mock_registry.get_schema_version.return_value = {
+            "version": "1.0.0",
+            "fields": [
+                {"name": "id", "type": "string"},
+                {"name": "embedding", "type": "vector", "dimension": 384},
+                {"name": "content", "type": "string"},
+                {"name": "metadata", "type": "json"},
+                {"name": "new_field", "type": "string"},
+            ]
+        }
+        
+        # Create provider with mock schema registry
+        provider = LanceDBProvider(uri="/path/to/db", schema_registry=mock_registry)
+        
+        # Verify schema adapter was initialized
+        assert provider.schema_adapter is not None
+        
+        # Apply schema version
+        result = provider.apply_schema_version("test_table", "1.0.0")
+        
+        # Verify schema was applied
+        assert result is True
+        mock_registry.get_schema_version.assert_called_once_with("1.0.0")
+        
+    @patch("pygovpub.storage.providers.lancedb_provider.lancedb")
+    def test_lancedb_create_with_schema_version(self, mock_lancedb):
+        """Test creating a table with schema version."""
+        # Mock LanceDB and its methods
+        mock_db = MagicMock()
+        mock_table = MagicMock()
+        mock_db.table_names.return_value = []  # Table doesn't exist
+        mock_db.create_table.return_value = mock_table
+        mock_lancedb.connect.return_value = mock_db
+        
+        # Mock schema registry
+        mock_registry = MagicMock(spec=SchemaRegistry)
+        mock_registry.get_schema_version.return_value = {
+            "version": "1.0.0",
+            "fields": [
+                {"name": "id", "type": "string"},
+                {"name": "embedding", "type": "vector", "dimension": 384},
+                {"name": "content", "type": "string"},
+                {"name": "metadata", "type": "json"},
+                {"name": "new_field", "type": "string"},
+            ]
+        }
+        
+        # Create provider with mock schema registry
+        provider = LanceDBProvider(uri="/path/to/db", schema_registry=mock_registry)
+        
+        # Create table with schema version
+        table = provider._get_or_create_table("test_table", schema_version="1.0.0")
+        
+        # Verify schema version was fetched
+        mock_registry.get_schema_version.assert_called_once_with("1.0.0")
+        
+        # Verify table was created
+        mock_db.create_table.assert_called_once()
+        assert table == mock_table
