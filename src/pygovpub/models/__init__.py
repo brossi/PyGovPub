@@ -46,6 +46,85 @@ from pygovpub.models.base import (
     BaseEntity
 )
 
+# Import regulatory models (Pydantic)
+from pygovpub.models.regulatory import (
+    # CFR models
+    CfrTitle,
+    CfrChapter,
+    CfrPart,
+    CfrSection,
+    # Court Opinion models
+    CourtType,
+    CourtOpinion,
+    # Federal Register models
+    FrDocumentType,
+    FederalRegisterDocument,
+    # Regulatory Process models
+    RegulatoryProcessStatus,
+    RegulatoryProcess
+)
+
+# Import citation models (Pydantic)
+from pygovpub.models.citation import (
+    # Citation models
+    CitationType,
+    Citation,
+    # Resolution models
+    ResolutionStatus,
+    ResolutionMethod,
+    ReferenceResolution,
+    # Relationship models
+    RelationshipType,
+    BidirectionalLink
+)
+
+# Import relationship models (Pydantic)
+from pygovpub.models.relationship import (
+    # Entity types
+    EntityType,
+    # Relationship types
+    RelationshipDirection,
+    # Hierarchy models
+    HierarchicalRelationship,
+    # Many-to-many models
+    ManyToManyMapping,
+    # Temporal models
+    HistoricalState,
+    TemporalRelationship,
+    # Constraint models
+    RelationshipConstraint
+)
+
+# Import advanced metadata models (Pydantic)
+from pygovpub.models.advanced_metadata import (
+    # Version history models
+    VersionAction,
+    VersionHistory,
+    # Audit trail models
+    AuditAction,
+    AuditTrail,
+    # Provenance models
+    ProvenanceAgent,
+    ProvenanceRecord,
+    # Access control models
+    AccessLevel,
+    AccessControl
+)
+
+# Import model optimization tools
+from pygovpub.models.optimization import (
+    # Optimized model base class
+    OptimizedModel,
+    # Lazy loading
+    LazyLoadableModel,
+    lazy_load,
+    # Batch processing
+    BatchProcessor,
+    batch_process,
+    # Serialization optimization
+    SerializationOptimizer
+)
+
 # Import other models gradually as they are needed
 # Database models will be imported here once they are fully tested
 
@@ -64,4 +143,30 @@ __all__ = [
     
     # Base models (SQLModel)
     "BaseTable", "BaseEntity",
+    
+    # Regulatory models
+    "CfrTitle", "CfrChapter", "CfrPart", "CfrSection",
+    "CourtType", "CourtOpinion",
+    "FrDocumentType", "FederalRegisterDocument",
+    "RegulatoryProcessStatus", "RegulatoryProcess",
+    
+    # Citation models
+    "CitationType", "Citation",
+    "ResolutionStatus", "ResolutionMethod", "ReferenceResolution",
+    "RelationshipType", "BidirectionalLink",
+    
+    # Complex relationship models
+    "EntityType", "RelationshipDirection",
+    "HierarchicalRelationship", "ManyToManyMapping",
+    "HistoricalState", "TemporalRelationship", "RelationshipConstraint",
+    
+    # Advanced metadata models
+    "VersionAction", "VersionHistory",
+    "AuditAction", "AuditTrail",
+    "ProvenanceAgent", "ProvenanceRecord",
+    "AccessLevel", "AccessControl",
+    
+    # Model optimization tools
+    "OptimizedModel", "LazyLoadableModel", "lazy_load",
+    "BatchProcessor", "batch_process", "SerializationOptimizer",
 ]
