@@ -531,7 +531,11 @@ class TestSchemaRegistry:
             mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
             
             # Verify migrations with sequential versions
-            with patch.object(inspect, 'get_table_names', return_value=["schema_versions"]):
+            with patch('sqlalchemy.inspect') as mock_inspect:
+                # Mock the inspector's get_table_names method
+                mock_inspector = MagicMock()
+                mock_inspector.get_table_names.return_value = ["schema_versions"]
+                mock_inspect.return_value = mock_inspector
                 valid, problems = registry.verify_migrations()
                 
                 # Should be valid (no gaps)
@@ -549,7 +553,11 @@ class TestSchemaRegistry:
             mock_conn.execute.return_value = mock_result
             
             # Verify migrations with gap
-            with patch.object(inspect, 'get_table_names', return_value=["schema_versions"]):
+            with patch('sqlalchemy.inspect') as mock_inspect:
+                # Mock the inspector's get_table_names method
+                mock_inspector = MagicMock()
+                mock_inspector.get_table_names.return_value = ["schema_versions"]
+                mock_inspect.return_value = mock_inspector
                 valid, problems = registry.verify_migrations()
                 
                 # Should be invalid (gap at version 3)
@@ -562,7 +570,11 @@ class TestSchemaRegistry:
             mock_conn.execute.side_effect = Exception("Test error")
             
             # Verify migrations with exception
-            with patch.object(inspect, 'get_table_names', return_value=["schema_versions"]):
+            with patch('sqlalchemy.inspect') as mock_inspect:
+                # Mock the inspector's get_table_names method
+                mock_inspector = MagicMock()
+                mock_inspector.get_table_names.return_value = ["schema_versions"]
+                mock_inspect.return_value = mock_inspector
                 valid, problems = registry.verify_migrations()
                 
                 # Should be invalid due to error
