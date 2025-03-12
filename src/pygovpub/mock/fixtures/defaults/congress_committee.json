@@ -1,0 +1,36 @@
+{
+  "pagination": {
+    "count": 1,
+    "next": null,
+    "previous": null
+  },
+  "request": {
+    "congress": 117,
+    "chamber": "house",
+    "systemCode": "hsju"
+  },
+  "committee": {
+    "systemCode": "hsju",
+    "name": "House Committee on the Judiciary",
+    "chamber": "house",
+    "type": "standing",
+    "url": "https://api.congress.gov/v3/committee/117/house/hsju",
+    "subcommittees": {
+      "count": 5,
+      "url": "https://api.congress.gov/v3/committee/117/house/hsju/subcommittees"
+    },
+    "activities": {
+      "count": 1029,
+      "url": "https://api.congress.gov/v3/committee/117/house/hsju/activities"
+    },
+    "members": {
+      "count": 44,
+      "url": "https://api.congress.gov/v3/committee/117/house/hsju/members"
+    },
+    "bills": {
+      "count": 541,
+      "url": "https://api.congress.gov/v3/committee/117/house/hsju/bills"
+    },
+    "updateDate": "2023-01-03T09:30:22Z"
+  }
+}

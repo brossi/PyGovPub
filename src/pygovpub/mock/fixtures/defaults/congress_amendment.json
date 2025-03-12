@@ -1,0 +1,52 @@
+{
+  "pagination": {
+    "count": 1,
+    "next": null,
+    "previous": null
+  },
+  "request": {
+    "congress": 117,
+    "amendmentType": "hamdt",
+    "amendmentNumber": 173
+  },
+  "amendment": {
+    "congress": 117,
+    "type": "hamdt",
+    "number": "173",
+    "url": "https://api.congress.gov/v3/amendment/117/hamdt/173",
+    "purpose": "To provide additional funds for the Capital Investment Grants program.",
+    "description": "An amendment numbered 173 printed in House Report 117-43 to provide an additional $1,000,000,000 for Capital Investment Grants.",
+    "latestAction": {
+      "text": "On agreeing to the Espaillat amendment (A137) Agreed to by voice vote.",
+      "actionDate": "2021-07-01",
+      "actionTime": "13:43:00"
+    },
+    "status": "Agreed to in House",
+    "sponsors": [
+      {
+        "bioguideId": "E000297",
+        "firstName": "Adriano",
+        "lastName": "Espaillat",
+        "fullName": "Rep. Espaillat, Adriano [D-NY-13]",
+        "party": "D",
+        "state": "NY",
+        "url": "https://api.congress.gov/v3/member/E000297"
+      }
+    ],
+    "cosponsors": {
+      "count": 0,
+      "url": "https://api.congress.gov/v3/amendment/117/hamdt/173/cosponsors"
+    },
+    "amendedBill": {
+      "congress": 117,
+      "type": "hr",
+      "number": "4502",
+      "url": "https://api.congress.gov/v3/bill/117/hr/4502"
+    },
+    "actions": {
+      "count": 4,
+      "url": "https://api.congress.gov/v3/amendment/117/hamdt/173/actions"
+    },
+    "updateDate": "2021-07-14T12:30:24Z"
+  }
+}

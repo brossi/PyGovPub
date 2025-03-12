@@ -1,0 +1,20 @@
+{
+  "lastModified": "2021-01-05T17:34:06Z",
+  "packageId": "BILLS-117hr1ih",
+  "packageLink": "https://api.govinfo.gov/packages/BILLS-117hr1ih",
+  "docClass": "hr",
+  "title": "H.R.1 - For the People Act of 2021",
+  "congress": "117",
+  "session": "1",
+  "dateIssued": "2021-01-04T05:00:00Z",
+  "currentChamber": "House",
+  "billVersion": "Introduced in House",
+  "billNumber": "1",
+  "billType": "hr",
+  "publisher": "U.S. Government Publishing Office",
+  "shortTitle": [
+    "For the People Act of 2021"
+  ],
+  "collectionName": "Bills and Statutes",
+  "collectionCode": "BILLS"
+}

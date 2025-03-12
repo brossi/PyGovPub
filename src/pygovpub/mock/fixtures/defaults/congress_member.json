@@ -1,0 +1,105 @@
+{
+  "pagination": {
+    "count": 1,
+    "next": null,
+    "previous": null
+  },
+  "request": {
+    "bioguideId": "S001168"
+  },
+  "member": {
+    "bioguideId": "S001168",
+    "fullName": "John P. Sarbanes",
+    "firstName": "John",
+    "middleName": "P.",
+    "lastName": "Sarbanes",
+    "url": "https://api.congress.gov/v3/member/S001168",
+    "state": "MD",
+    "district": "3",
+    "party": "D",
+    "chamber": "House",
+    "served": [
+      {
+        "congress": 110,
+        "chamber": "House",
+        "state": "MD",
+        "district": "3",
+        "party": "D",
+        "startYear": 2007,
+        "endYear": 2009
+      },
+      {
+        "congress": 111,
+        "chamber": "House",
+        "state": "MD",
+        "district": "3",
+        "party": "D",
+        "startYear": 2009,
+        "endYear": 2011
+      },
+      {
+        "congress": 112,
+        "chamber": "House",
+        "state": "MD",
+        "district": "3",
+        "party": "D",
+        "startYear": 2011,
+        "endYear": 2013
+      },
+      {
+        "congress": 113,
+        "chamber": "House",
+        "state": "MD",
+        "district": "3",
+        "party": "D",
+        "startYear": 2013,
+        "endYear": 2015
+      },
+      {
+        "congress": 114,
+        "chamber": "House",
+        "state": "MD",
+        "district": "3",
+        "party": "D",
+        "startYear": 2015,
+        "endYear": 2017
+      },
+      {
+        "congress": 115,
+        "chamber": "House",
+        "state": "MD",
+        "district": "3",
+        "party": "D",
+        "startYear": 2017,
+        "endYear": 2019
+      },
+      {
+        "congress": 116,
+        "chamber": "House",
+        "state": "MD",
+        "district": "3",
+        "party": "D",
+        "startYear": 2019,
+        "endYear": 2021
+      },
+      {
+        "congress": 117,
+        "chamber": "House",
+        "state": "MD",
+        "district": "3",
+        "party": "D",
+        "startYear": 2021,
+        "endYear": 2023
+      }
+    ],
+    "sponsoredLegislation": {
+      "count": 81,
+      "url": "https://api.congress.gov/v3/member/S001168/sponsored-legislation"
+    },
+    "cosponsoredLegislation": {
+      "count": 1254,
+      "url": "https://api.congress.gov/v3/member/S001168/cosponsored-legislation"
+    },
+    "updateDate": "2022-12-27T03:33:25Z"
+  }
+}
