@@ -434,6 +434,373 @@ def create_partial_index(table_name: str, column_names: List[str], condition: st
     logger.info(f"Created partial index {index_name} on {table_name}({columns_clause}) WHERE {condition}")
 
 
+def create_btree_index(table_name: str, column_names: List[str], index_name: Optional[str] = None,
+                     engine: Optional[Engine] = None) -> None:
+    """
+    Create a B-tree index explicitly (this is the default PostgreSQL index type).
+    
+    Args:
+        table_name: Name of the table
+        column_names: List of column names to include in index
+        index_name: Optional name for the index (auto-generated if None)
+        engine: SQLAlchemy engine (uses default engine if None)
+    
+    Example:
+        ```python
+        create_btree_index('bills', ['introduced_date'])
+        ```
+    """
+    engine = engine or get_engine()
+    
+    # Generate index name if not provided
+    if index_name is None:
+        index_name = f"idx_{table_name}_{'_'.join(column_names)}_btree"
+    
+    # Create index SQL
+    columns_clause = ", ".join(column_names)
+    sql = f"CREATE INDEX {index_name} ON {table_name} USING btree ({columns_clause})"
+    
+    # Execute statement
+    with engine.connect() as conn:
+        conn.execute(text(sql))
+        conn.commit()
+    
+    logger.info(f"Created B-tree index {index_name} on {table_name}({columns_clause})")
+
+
+def create_hash_index(table_name: str, column_name: str, index_name: Optional[str] = None,
+                    engine: Optional[Engine] = None) -> None:
+    """
+    Create a hash index for equality operations on a single column.
+    
+    Args:
+        table_name: Name of the table
+        column_name: Column name to include in index (hash indexes only support one column)
+        index_name: Optional name for the index (auto-generated if None)
+        engine: SQLAlchemy engine (uses default engine if None)
+    
+    Example:
+        ```python
+        create_hash_index('bills', 'bill_id')
+        ```
+    """
+    engine = engine or get_engine()
+    
+    # Generate index name if not provided
+    if index_name is None:
+        index_name = f"idx_{table_name}_{column_name}_hash"
+    
+    # Create index SQL
+    sql = f"CREATE INDEX {index_name} ON {table_name} USING hash ({column_name})"
+    
+    # Execute statement
+    with engine.connect() as conn:
+        conn.execute(text(sql))
+        conn.commit()
+    
+    logger.info(f"Created hash index {index_name} on {table_name}({column_name})")
+
+
+def create_gin_index(table_name: str, column_name: str, index_name: Optional[str] = None,
+                   index_operator_class: Optional[str] = None, engine: Optional[Engine] = None) -> None:
+    """
+    Create a GIN (Generalized Inverted Index) index for JSONB, arrays, or full-text search.
+    
+    Args:
+        table_name: Name of the table
+        column_name: Column name to include in index
+        index_name: Optional name for the index (auto-generated if None)
+        index_operator_class: Optional operator class (e.g., 'jsonb_path_ops' for JSONB)
+        engine: SQLAlchemy engine (uses default engine if None)
+    
+    Example:
+        ```python
+        create_gin_index('bills', 'metadata', index_operator_class='jsonb_path_ops')
+        ```
+    """
+    engine = engine or get_engine()
+    
+    # Generate index name if not provided
+    if index_name is None:
+        index_name = f"idx_{table_name}_{column_name}_gin"
+    
+    # Add operator class if provided
+    if index_operator_class:
+        column_spec = f"{column_name} {index_operator_class}"
+    else:
+        column_spec = column_name
+    
+    # Create index SQL
+    sql = f"CREATE INDEX {index_name} ON {table_name} USING gin ({column_spec})"
+    
+    # Execute statement
+    with engine.connect() as conn:
+        conn.execute(text(sql))
+        conn.commit()
+    
+    logger.info(f"Created GIN index {index_name} on {table_name}({column_spec})")
+
+
+def create_gist_index(table_name: str, column_name: str, index_name: Optional[str] = None,
+                    engine: Optional[Engine] = None) -> None:
+    """
+    Create a GiST (Generalized Search Tree) index for geometry, range types, or exclusion constraints.
+    
+    Args:
+        table_name: Name of the table
+        column_name: Column name to include in index
+        index_name: Optional name for the index (auto-generated if None)
+        engine: SQLAlchemy engine (uses default engine if None)
+    
+    Example:
+        ```python
+        create_gist_index('congressional_districts', 'geometry')
+        ```
+    """
+    engine = engine or get_engine()
+    
+    # Generate index name if not provided
+    if index_name is None:
+        index_name = f"idx_{table_name}_{column_name}_gist"
+    
+    # Create index SQL
+    sql = f"CREATE INDEX {index_name} ON {table_name} USING gist ({column_name})"
+    
+    # Execute statement
+    with engine.connect() as conn:
+        conn.execute(text(sql))
+        conn.commit()
+    
+    logger.info(f"Created GiST index {index_name} on {table_name}({column_name})")
+
+
+def get_index_info(table_name: str, engine: Optional[Engine] = None) -> List[Dict[str, Any]]:
+    """
+    Get information about indexes on a table.
+    
+    Args:
+        table_name: Name of the table
+        engine: SQLAlchemy engine (uses default engine if None)
+    
+    Returns:
+        List of dictionaries with index information
+    
+    Example:
+        ```python
+        indexes = get_index_info('bills')
+        for idx in indexes:
+            print(f"{idx['index_name']}: {idx['index_type']} on {idx['column_names']}")
+        ```
+    """
+    engine = engine or get_engine()
+    
+    # Query for index information
+    sql = text("""
+    SELECT
+        i.relname AS index_name,
+        a.attname AS column_name,
+        idx.indisunique AS is_unique,
+        idx.indisprimary AS is_primary,
+        am.amname AS index_type,
+        pg_get_indexdef(idx.indexrelid) AS index_definition,
+        idx.indpred IS NOT NULL AS is_partial,
+        pg_size_pretty(pg_relation_size(i.oid)) AS index_size
+    FROM
+        pg_index idx
+    JOIN pg_class i ON i.oid = idx.indexrelid
+    JOIN pg_class t ON t.oid = idx.indrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    JOIN pg_am am ON am.oid = i.relam
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(idx.indkey)
+    WHERE
+        t.relname = :table_name
+    ORDER BY
+        i.relname, a.attnum;
+    """)
+    
+    # Execute query
+    with engine.connect() as conn:
+        result = conn.execute(sql, {"table_name": table_name})
+        rows = result.fetchall()
+    
+    # Group columns by index
+    indexes = {}
+    for row in rows:
+        row_dict = dict(row._mapping)
+        idx_name = row_dict['index_name']
+        
+        if idx_name not in indexes:
+            indexes[idx_name] = {
+                'index_name': idx_name,
+                'is_unique': row_dict['is_unique'],
+                'is_primary': row_dict['is_primary'],
+                'index_type': row_dict['index_type'],
+                'index_definition': row_dict['index_definition'],
+                'is_partial': row_dict['is_partial'],
+                'index_size': row_dict['index_size'],
+                'column_names': []
+            }
+        
+        indexes[idx_name]['column_names'].append(row_dict['column_name'])
+    
+    return list(indexes.values())
+
+
+def drop_index(index_name: str, cascade: bool = False, if_exists: bool = True, 
+             engine: Optional[Engine] = None) -> None:
+    """
+    Drop an index.
+    
+    Args:
+        index_name: Name of the index to drop
+        cascade: Whether to cascade the drop to dependent objects
+        if_exists: Whether to include IF EXISTS clause
+        engine: SQLAlchemy engine (uses default engine if None)
+    
+    Example:
+        ```python
+        drop_index('idx_bills_congress_bill_type_bill_number')
+        ```
+    """
+    engine = engine or get_engine()
+    
+    # Build SQL
+    if_exists_clause = "IF EXISTS" if if_exists else ""
+    cascade_clause = "CASCADE" if cascade else ""
+    sql = f"DROP INDEX {if_exists_clause} {index_name} {cascade_clause}"
+    
+    # Execute statement
+    with engine.connect() as conn:
+        conn.execute(text(sql))
+        conn.commit()
+    
+    logger.info(f"Dropped index {index_name}")
+
+
+def create_index_maintenance_function(engine: Optional[Engine] = None) -> None:
+    """
+    Create a function to analyze and maintain indexes.
+    
+    This function creates a PostgreSQL function that can be called to:
+    1. Identify unused indexes
+    2. Suggest indexes based on query patterns
+    3. Rebuild bloated indexes
+    
+    Args:
+        engine: SQLAlchemy engine (uses default engine if None)
+    
+    Example:
+        ```python
+        create_index_maintenance_function()
+        # Later, in SQL: SELECT maintain_indexes();
+        ```
+    """
+    engine = engine or get_engine()
+    
+    # Create function SQL
+    sql = """
+    CREATE OR REPLACE FUNCTION maintain_indexes(
+        min_index_size_mb integer DEFAULT 10,
+        rebuild_bloat_percentage integer DEFAULT 30
+    )
+    RETURNS TABLE(
+        action text,
+        object_name text,
+        details text
+    ) AS $$
+    DECLARE
+        index_record record;
+        bloat_record record;
+        unused_record record;
+        usage_record record;
+    BEGIN
+        -- Find unused indexes (no scans)
+        FOR unused_record IN
+            SELECT
+                idx.indexrelid::regclass AS index_name,
+                idx.indrelid::regclass AS table_name,
+                pg_size_pretty(pg_relation_size(idx.indexrelid)) AS index_size,
+                pg_stat_get_numscans(idx.indexrelid) AS index_scans
+            FROM pg_index idx
+            JOIN pg_stat_user_indexes stat ON idx.indexrelid = stat.indexrelid
+            WHERE idx.indisprimary = false
+              AND idx.indisunique = false
+              AND stat.idx_scan = 0
+              AND pg_relation_size(idx.indexrelid) / (1024*1024) >= min_index_size_mb
+            ORDER BY pg_relation_size(idx.indexrelid) DESC
+        LOOP
+            action := 'DROP_UNUSED_INDEX';
+            object_name := unused_record.index_name::text;
+            details := format('Table: %s, Size: %s, Scans: %s', 
+                        unused_record.table_name, 
+                        unused_record.index_size, 
+                        unused_record.index_scans);
+            RETURN NEXT;
+        END LOOP;
+        
+        -- Find bloated indexes
+        FOR bloat_record IN
+            SELECT
+                idx.indexrelid::regclass AS index_name,
+                idx.indrelid::regclass AS table_name,
+                pg_size_pretty(pg_relation_size(idx.indexrelid)) AS index_size,
+                round(
+                    (pgstatindex(idx.indexrelid::text)).avg_leaf_density
+                ) AS density
+            FROM pg_index idx
+            WHERE idx.indisvalid = true
+            AND pg_relation_size(idx.indexrelid) / (1024*1024) >= min_index_size_mb
+            ORDER BY density ASC, pg_relation_size(idx.indexrelid) DESC
+        LOOP
+            -- If density is too low (high bloat)
+            IF bloat_record.density < (100 - rebuild_bloat_percentage) THEN
+                action := 'REBUILD_BLOATED_INDEX';
+                object_name := bloat_record.index_name::text;
+                details := format('Table: %s, Size: %s, Density: %s%%', 
+                            bloat_record.table_name, 
+                            bloat_record.index_size, 
+                            bloat_record.density);
+                RETURN NEXT;
+            END IF;
+        END LOOP;
+        
+        -- Find missing indexes (tables with sequential scans)
+        FOR usage_record IN
+            SELECT
+                schemaname || '.' || relname AS table_name,
+                pg_size_pretty(pg_relation_size(schemaname || '.' || relname)) AS table_size,
+                seq_scan,
+                idx_scan,
+                n_live_tup AS row_count
+            FROM pg_stat_user_tables
+            WHERE seq_scan > 0
+            AND seq_scan > idx_scan
+            AND n_live_tup > 1000
+            ORDER BY n_live_tup * seq_scan DESC
+        LOOP
+            action := 'CONSIDER_INDEX';
+            object_name := usage_record.table_name::text;
+            details := format('Size: %s, Seq scans: %s, Index scans: %s, Rows: %s', 
+                        usage_record.table_size, 
+                        usage_record.seq_scan, 
+                        usage_record.idx_scan, 
+                        usage_record.row_count);
+            RETURN NEXT;
+        END LOOP;
+        
+        RETURN;
+    END;
+    $$ LANGUAGE plpgsql;
+    """
+    
+    # Execute statement
+    with engine.connect() as conn:
+        conn.execute(text(sql))
+        conn.commit()
+    
+    logger.info("Created index maintenance function")
+
+
 # Initialize event listeners when this module is imported
 engine = get_engine()
 logger.info("Query optimization module initialized with performance tracking")
