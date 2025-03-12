@@ -18,6 +18,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Res
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# Initialize server process tracking
+_server_process = None
+
 from pygovpub.config import config
 
 
@@ -559,3 +562,32 @@ async def stop_mock_server() -> None:
         # Set to None explicitly rather than waiting for completion
         # This makes the function more testable and achieves the same result
         _server_process = None
+
+
+# Define the FastAPI app for mock server endpoints
+app = FastAPI(
+    title="PyGovPub Mock Server",
+    description="Mock server for Congress.gov and GovInfo.gov APIs",
+    version="1.0.0"
+)
+
+@app.get('/v3/bills')
+async def mock_bills(request: Request):
+    # Validate API key from header
+    if 'X-API-Key' not in request.headers:
+        raise HTTPException(status_code=401, detail='Missing API key')
+    
+    # Simulate paginated response
+    return {
+        "pagination": {
+            "count": 20,
+            "nextPage": "https://api.congress.gov/v3/bills?offset=20&limit=20"
+        },
+        "results": [{
+            "congress": 118,
+            "type": "HR",
+            "number": 1234,
+            "title": "Mock Bill Title",
+            "updateDate": "2024-03-15"
+        }]
+    }
