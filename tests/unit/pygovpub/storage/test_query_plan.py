@@ -300,7 +300,7 @@ class TestQueryOptimizer:
         
         # Verify optimizations
         assert len(optimized_plan.optimizations) > 0
-        assert any("create index" in opt["description"].lower() for opt in optimized_plan.optimizations)
+        assert any("vector index" in opt["description"].lower() for opt in optimized_plan.optimizations)
     
     def test_optimize_hybrid_search_many_filters(self):
         """Test optimizing a hybrid search query with many filters."""
