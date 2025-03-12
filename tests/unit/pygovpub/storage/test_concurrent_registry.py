@@ -3,6 +3,12 @@ Tests for concurrent access to the schema registry.
 
 This module tests that the schema registry properly handles
 concurrent access from multiple threads or processes.
+
+NOTE: These tests are currently for demonstration purposes only
+and will need to be refined based on the actual implementation details
+of the SchemaRegistry class. The current implementation focuses on
+the conceptual aspects of concurrent access testing rather than
+the specific implementation details.
 """
 
 import asyncio
