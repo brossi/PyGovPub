@@ -18,8 +18,8 @@
 
 ### 2. Vector Search Implementation [SEARCH, TEST]
 [i] - Implement: Align with <mcsymbol name="ContentHash" filename="database-schema.md"></mcsymbol> indexing requirements
-[ ] - Test: Verify ANN search consistency
-[ ] - Test: Verify hybrid search fallbacks
+[*] - Test: Verify ANN search consistency
+[*] - Test: Verify hybrid search fallbacks
 [ ] - Test: Verify index rebuild automation
 [*] - Test: Verify search performance metrics
 [*] - Implement: Vector search service

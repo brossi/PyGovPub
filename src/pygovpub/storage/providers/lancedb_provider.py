@@ -514,6 +514,16 @@ class LanceDBProvider:
                             record["metadata"] = json.loads(record["metadata"])
                         except json.JSONDecodeError:
                             logger.warning(f"Could not parse metadata JSON")
+                    
+                    # Normalize distance score (higher is better, 1.0 is perfect match)
+                    if "_distance" in record:
+                        # LanceDB distances are L2 norm distances (lower is better)
+                        # Convert to a similarity score (1.0 - normalized distance)
+                        distance = float(record["_distance"])
+                        max_theoretical_distance = self.vector_dim * 2  # Maximum possible L2 distance
+                        normalized_distance = min(1.0, distance / max_theoretical_distance)
+                        record["score"] = 1.0 - normalized_distance
+                        del record["_distance"]  # Remove original distance
 
                     records.append(record)
                 
@@ -646,6 +656,33 @@ class LanceDBProvider:
                             record["metadata"] = json.loads(record["metadata"])
                         except json.JSONDecodeError:
                             logger.warning(f"Could not parse metadata JSON")
+                    
+                    # Normalize distance and text relevance scores
+                    # For hybrid search, LanceDB may return both _distance and _relevance scores
+                    distance_score = 0.0
+                    text_score = 0.0
+                    
+                    if "_distance" in record:
+                        # Convert distance to similarity score
+                        distance = float(record["_distance"])
+                        max_theoretical_distance = self.vector_dim * 2
+                        normalized_distance = min(1.0, distance / max_theoretical_distance)
+                        distance_score = 1.0 - normalized_distance
+                        del record["_distance"]
+                    
+                    if "_relevance" in record:
+                        # LanceDB text relevance is already normalized (higher is better)
+                        text_score = float(record["_relevance"])
+                        del record["_relevance"]
+                    
+                    # Combined score - if both scores are present, average them
+                    # Otherwise use whichever is available
+                    if distance_score > 0 and text_score > 0:
+                        record["score"] = (distance_score + text_score) / 2
+                    elif distance_score > 0:
+                        record["score"] = distance_score
+                    elif text_score > 0:
+                        record["score"] = text_score
 
                     records.append(record)
                 
@@ -737,6 +774,88 @@ class LanceDBProvider:
             logger.error(f"Error applying schema version {version} to table {table_name}", error=str(e))
             return False
             
+    def apply_score_threshold(self, results: List[Dict[str, Any]], threshold: float) -> List[Dict[str, Any]]:
+        """
+        Filter search results by score threshold.
+        
+        Args:
+            results: List of search results
+            threshold: Minimum score threshold to keep
+            
+        Returns:
+            Filtered list of search results
+        """
+        return [r for r in results if r.get("score", 0) >= threshold]
+        
+    def verify_ann_consistency(self, 
+                             results1: List[Dict[str, Any]], 
+                             results2: List[Dict[str, Any]], 
+                             top_k: int = None,
+                             jaccard_threshold: float = 0.7) -> Dict[str, Any]:
+        """
+        Verify consistency between two sets of vector search results.
+        
+        Args:
+            results1: First set of search results
+            results2: Second set of search results
+            top_k: Number of top results to compare (default: all)
+            jaccard_threshold: Threshold for Jaccard similarity (0-1)
+            
+        Returns:
+            Dictionary with consistency metrics
+        """
+        if not results1 or not results2:
+            return {
+                "consistent": False,
+                "reason": "Empty results",
+                "jaccard_similarity": 0.0,
+                "rank_correlation": 0.0
+            }
+        
+        # Limit to top_k if specified
+        if top_k:
+            results1 = results1[:top_k]
+            results2 = results2[:top_k]
+        
+        # Extract IDs
+        ids1 = [r.get("id") for r in results1]
+        ids2 = [r.get("id") for r in results2]
+        
+        # Calculate Jaccard similarity (intersection over union)
+        intersection = len(set(ids1).intersection(set(ids2)))
+        union = len(set(ids1).union(set(ids2)))
+        jaccard_similarity = intersection / union if union > 0 else 0.0
+        
+        # Calculate rank correlation for common items
+        common_ids = set(ids1).intersection(set(ids2))
+        rank_correlation = 0.0
+        
+        if common_ids:
+            # Get ranks
+            ranks1 = {id: idx for idx, id in enumerate(ids1) if id in common_ids}
+            ranks2 = {id: idx for idx, id in enumerate(ids2) if id in common_ids}
+            
+            # Calculate rank differences
+            n = len(common_ids)
+            rank_diffs_squared = sum((ranks1[id] - ranks2[id])**2 for id in common_ids)
+            
+            # Spearman's rank correlation coefficient
+            max_possible_diff = n * (n**2 - 1) / 6  # Maximum possible sum of squared differences
+            if max_possible_diff > 0:
+                rank_correlation = 1 - (rank_diffs_squared / max_possible_diff)
+        
+        # Determine if results are consistent
+        is_consistent = jaccard_similarity >= jaccard_threshold
+        
+        return {
+            "consistent": is_consistent,
+            "reason": "Results consistent" if is_consistent else "Jaccard similarity below threshold",
+            "jaccard_similarity": jaccard_similarity,
+            "rank_correlation": rank_correlation,
+            "common_items": len(common_ids),
+            "total_items": max(len(ids1), len(ids2))
+        }
+        
     def migrate_to_provider(self, table_name: str, target_provider, model_class, 
                           limit: int = None, batch_size: int = 100) -> int:
         """
