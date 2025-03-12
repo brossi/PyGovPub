@@ -18,6 +18,15 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from pygovpub.storage.query_plan import (
+    get_query_plan_analyzer,
+    get_query_optimizer,
+    measure_execution_time,
+    QueryPlan,
+    VectorSearchPlan,
+    HybridSearchPlan
+)
+
 # Set up structured logging
 logger = structlog.get_logger()
 
@@ -618,7 +627,8 @@ class StorageInterface:
                                    model_class: Type[T], 
                                    query_vector: List[float], 
                                    limit: int = 10, 
-                                   filter_criteria: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+                                   filter_criteria: Optional[Dict[str, Any]] = None,
+                                   analyze_query: bool = True) -> List[Dict[str, Any]]:
         """
         Perform vector search using a specific provider.
         
@@ -628,6 +638,7 @@ class StorageInterface:
             query_vector: Query embedding vector
             limit: Maximum number of results to return
             filter_criteria: Optional filtering criteria
+            analyze_query: Whether to analyze and optimize the query
             
         Returns:
             List of matching records
@@ -643,8 +654,14 @@ class StorageInterface:
             # Track operations
             DB_OPERATIONS.labels(operation=f"vector_search_{provider_type}", status="processing", db_type=provider_type).inc()
             
-            # Perform search using provider
-            results = provider.vector_search(model_class, query_vector, limit=limit, filter_criteria=filter_criteria)
+            # Perform search using provider with query analysis
+            results = provider.vector_search(
+                model_class, 
+                query_vector, 
+                limit=limit, 
+                filter_criteria=filter_criteria,
+                analyze_query=analyze_query
+            )
             
             DB_OPERATIONS.labels(operation=f"vector_search_{provider_type}", status="success", db_type=provider_type).inc()
             DB_OPERATION_DURATION.labels(operation=f"vector_search_{provider_type}", db_type=provider_type).observe(time.time() - start_time)
@@ -654,6 +671,47 @@ class StorageInterface:
             DB_OPERATIONS.labels(operation=f"vector_search_{provider_type}", status="error", db_type=provider_type).inc()
             logger.error(f"Failed to perform vector search with {provider_type}", error=str(e))
             raise
+            
+    def get_vector_search_plan(self,
+                              provider_type: str,
+                              model_class: Type[T],
+                              query_vector: List[float],
+                              limit: int = 10,
+                              filter_criteria: Optional[Dict[str, Any]] = None) -> VectorSearchPlan:
+        """
+        Get query plan for vector search operation without executing the search.
+        
+        Args:
+            provider_type: Provider type (e.g., "lancedb")
+            model_class: Model class to use for the search
+            query_vector: Query embedding vector
+            limit: Maximum number of results to return
+            filter_criteria: Optional filtering criteria
+            
+        Returns:
+            Vector search query plan
+            
+        Raises:
+            ValueError: If provider not available
+            Exception: Errors during plan creation
+        """
+        provider = self._get_provider(provider_type)
+        
+        # Get analyzer and optimizer
+        analyzer = get_query_plan_analyzer()
+        optimizer = get_query_optimizer()
+        
+        # Create and optimize plan
+        plan = analyzer.analyze_vector_search(
+            provider=provider,
+            model_class=model_class,
+            query_vector=query_vector,
+            filter_criteria=filter_criteria,
+            limit=limit
+        )
+        optimized_plan = optimizer.optimize(plan)
+        
+        return optimized_plan
 
     def hybrid_search_with_provider(self, 
                                    provider_type: str, 
@@ -661,7 +719,8 @@ class StorageInterface:
                                    query_text: str, 
                                    query_vector: List[float] = None, 
                                    limit: int = 10, 
-                                   filter_criteria: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+                                   filter_criteria: Optional[Dict[str, Any]] = None,
+                                   analyze_query: bool = True) -> List[Dict[str, Any]]:
         """
         Perform hybrid search (vector + text) using a specific provider.
         
@@ -672,6 +731,7 @@ class StorageInterface:
             query_vector: Optional vector query
             limit: Maximum number of results to return
             filter_criteria: Optional filtering criteria
+            analyze_query: Whether to analyze and optimize the query
             
         Returns:
             List of matching records
@@ -690,9 +750,14 @@ class StorageInterface:
             # Track operations
             DB_OPERATIONS.labels(operation=f"hybrid_search_{provider_type}", status="processing", db_type=provider_type).inc()
             
-            # Perform hybrid search using provider
+            # Perform hybrid search using provider with query analysis
             results = provider.hybrid_search(
-                model_class, query_text, query_vector=query_vector, limit=limit, filter_criteria=filter_criteria
+                model_class, 
+                query_text, 
+                query_vector=query_vector, 
+                limit=limit, 
+                filter_criteria=filter_criteria,
+                analyze_query=analyze_query
             )
             
             DB_OPERATIONS.labels(operation=f"hybrid_search_{provider_type}", status="success", db_type=provider_type).inc()
@@ -704,6 +769,52 @@ class StorageInterface:
             logger.error(f"Failed to perform hybrid search with {provider_type}", error=str(e))
             raise
             
+    def get_hybrid_search_plan(self,
+                              provider_type: str,
+                              model_class: Type[T],
+                              query_text: str,
+                              query_vector: List[float] = None,
+                              limit: int = 10,
+                              filter_criteria: Optional[Dict[str, Any]] = None) -> HybridSearchPlan:
+        """
+        Get query plan for hybrid search operation without executing the search.
+        
+        Args:
+            provider_type: Provider type (e.g., "lancedb")
+            model_class: Model class to use for the search
+            query_text: Text query
+            query_vector: Optional vector query
+            limit: Maximum number of results to return
+            filter_criteria: Optional filtering criteria
+            
+        Returns:
+            Hybrid search query plan
+            
+        Raises:
+            ValueError: If provider not available
+            Exception: Errors during plan creation
+        """
+        provider = self._get_provider(provider_type)
+        
+        if not hasattr(provider, "hybrid_search"):
+            raise ValueError(f"Provider {provider_type} does not support hybrid search")
+        
+        # Get analyzer and optimizer
+        analyzer = get_query_plan_analyzer()
+        optimizer = get_query_optimizer()
+        
+        # Create and optimize plan
+        plan = analyzer.analyze_hybrid_search(
+            provider=provider,
+            model_class=model_class,
+            query_text=query_text,
+            query_vector=query_vector,
+            filter_criteria=filter_criteria,
+            limit=limit
+        )
+        optimized_plan = optimizer.optimize(plan)
+        
+        return optimized_plan
     def migrate_to_provider(self, 
                            table_name: str,
                            target_provider,

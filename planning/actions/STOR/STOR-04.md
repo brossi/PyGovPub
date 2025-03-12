@@ -23,5 +23,5 @@
 [ ] - Test: Verify index rebuild automation
 [*] - Test: Verify search performance metrics
 [*] - Implement: Vector search service
-[ ] - Implement: Query plan analysis
-[ ] - Document: Search optimization
+[*] - Implement: Query plan analysis
+[*] - Document: Search optimization

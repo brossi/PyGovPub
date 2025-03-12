@@ -18,6 +18,12 @@ import pyarrow as pa
 import numpy as np
 from prometheus_client import Counter, Histogram, Gauge
 
+from pygovpub.storage.query_plan import (
+    get_query_plan_analyzer,
+    get_query_optimizer,
+    measure_execution_time
+)
+
 logger = structlog.get_logger()
 
 # Metrics
@@ -424,7 +430,8 @@ class LanceDBProvider:
                     model_class: Type[T],
                     query_vector: List[float],
                     limit: int = 10,
-                    filter_criteria: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+                    filter_criteria: Optional[Dict[str, Any]] = None,
+                    analyze_query: bool = True) -> List[Dict[str, Any]]:
         """
         Perform vector similarity search.
         
@@ -433,6 +440,7 @@ class LanceDBProvider:
             query_vector: Query vector
             limit: Maximum number of results
             filter_criteria: Optional filtering criteria
+            analyze_query: Whether to analyze and optimize the query
             
         Returns:
             List of matching records
@@ -446,36 +454,76 @@ class LanceDBProvider:
             table_name = model_class.__name__.lower()
 
         try:
+            # Generate query plan if requested
+            plan = None
+            if analyze_query:
+                # Get analyzer and optimizer
+                analyzer = get_query_plan_analyzer()
+                optimizer = get_query_optimizer()
+                
+                # Create and optimize plan
+                plan = analyzer.analyze_vector_search(
+                    provider=self,
+                    model_class=model_class,
+                    query_vector=query_vector,
+                    filter_criteria=filter_criteria,
+                    limit=limit
+                )
+                plan = optimizer.optimize(plan)
+                
+                # Log plan information
+                logger.debug(
+                    "Vector search query plan",
+                    table=table_name,
+                    estimated_cost=plan.estimated_cost,
+                    estimated_time_ms=plan.estimated_time_ms,
+                    optimizations=len(plan.optimizations)
+                )
+                
+                # Apply optimizations
+                for opt in plan.optimizations:
+                    logger.debug(f"Suggested optimization: {opt['description']}")
+
             # Get table
             table = self._get_or_create_table(table_name)
 
-            # Start query
-            query = table.search(query_vector, vector_column_name="embedding")
+            # Define the search execution function
+            def execute_search():
+                # Start query
+                search = table.search(query_vector, vector_column_name="embedding")
 
-            # Apply filters if provided
-            if filter_criteria:
-                filter_expr = " AND ".join([
-                    f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
-                    for key, value in filter_criteria.items()
-                ])
-                query = query.where(filter_expr)
+                # Apply filters if provided
+                if filter_criteria:
+                    filter_expr = " AND ".join([
+                        f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
+                        for key, value in filter_criteria.items()
+                    ])
+                    search = search.where(filter_expr)
 
-            # Execute search
-            result = query.limit(limit).to_pandas()
+                # Execute search
+                result = search.limit(limit).to_pandas()
 
-            # Process results
-            records = []
-            for _, row in result.iterrows():
-                record = row.to_dict()
+                # Process results
+                records = []
+                for _, row in result.iterrows():
+                    record = row.to_dict()
 
-                # Parse metadata from JSON
-                if "metadata" in record and isinstance(record["metadata"], str):
-                    try:
-                        record["metadata"] = json.loads(record["metadata"])
-                    except json.JSONDecodeError:
-                        logger.warning(f"Could not parse metadata JSON")
+                    # Parse metadata from JSON
+                    if "metadata" in record and isinstance(record["metadata"], str):
+                        try:
+                            record["metadata"] = json.loads(record["metadata"])
+                        except json.JSONDecodeError:
+                            logger.warning(f"Could not parse metadata JSON")
 
-                records.append(record)
+                    records.append(record)
+                
+                return records
+
+            # Execute search with timing measurement if we have a plan
+            if plan:
+                records = measure_execution_time(plan, execute_search)
+            else:
+                records = execute_search()
 
             LANCEDB_OPERATIONS.labels(
                 operation="vector_search",
@@ -505,7 +553,8 @@ class LanceDBProvider:
                     query_text: str,
                     query_vector: List[float] = None,
                     limit: int = 10,
-                    filter_criteria: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+                    filter_criteria: Optional[Dict[str, Any]] = None,
+                    analyze_query: bool = True) -> List[Dict[str, Any]]:
         """
         Perform hybrid search (full-text + vector) if text is provided.
         Will automatically generate embeddings if only text is provided.
@@ -516,6 +565,7 @@ class LanceDBProvider:
             query_vector: Optional vector query (for hybrid search)
             limit: Maximum number of results
             filter_criteria: Optional filtering criteria
+            analyze_query: Whether to analyze and optimize the query
             
         Returns:
             List of matching records
@@ -529,41 +579,83 @@ class LanceDBProvider:
             table_name = model_class.__name__.lower()
 
         try:
+            # Generate query plan if requested
+            plan = None
+            if analyze_query:
+                # Get analyzer and optimizer
+                analyzer = get_query_plan_analyzer()
+                optimizer = get_query_optimizer()
+                
+                # Create and optimize plan
+                plan = analyzer.analyze_hybrid_search(
+                    provider=self,
+                    model_class=model_class,
+                    query_text=query_text,
+                    query_vector=query_vector,
+                    filter_criteria=filter_criteria,
+                    limit=limit
+                )
+                plan = optimizer.optimize(plan)
+                
+                # Log plan information
+                logger.debug(
+                    "Hybrid search query plan",
+                    table=table_name,
+                    text_length=plan.text_query_length,
+                    estimated_cost=plan.estimated_cost,
+                    estimated_time_ms=plan.estimated_time_ms,
+                    optimizations=len(plan.optimizations)
+                )
+                
+                # Apply optimizations
+                for opt in plan.optimizations:
+                    logger.debug(f"Suggested optimization: {opt['description']}")
+
             # Get table
             table = self._get_or_create_table(table_name)
 
-            # Start hybrid query
-            if query_vector is not None:
-                # True hybrid search with vector and text components
-                query = table.search(query_vector, query_text=query_text)
+            # Define the search execution function
+            def execute_search():
+                # Start hybrid query
+                if query_vector is not None:
+                    # True hybrid search with vector and text components
+                    search = table.search(query_vector, query_text=query_text)
+                else:
+                    # Full-text search only
+                    search = table.search(query_text=query_text)
+
+                # Apply filters if provided
+                if filter_criteria:
+                    filter_expr = " AND ".join([
+                        f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
+                        for key, value in filter_criteria.items()
+                    ])
+                    search = search.where(filter_expr)
+
+                # Execute search
+                result = search.limit(limit).to_pandas()
+
+                # Process results
+                records = []
+                for _, row in result.iterrows():
+                    record = row.to_dict()
+
+                    # Parse metadata from JSON
+                    if "metadata" in record and isinstance(record["metadata"], str):
+                        try:
+                            record["metadata"] = json.loads(record["metadata"])
+                        except json.JSONDecodeError:
+                            logger.warning(f"Could not parse metadata JSON")
+
+                    records.append(record)
+                
+                return records
+
+            # Execute search with timing measurement if we have a plan
+            if plan:
+                records = measure_execution_time(plan, execute_search)
             else:
-                # Full-text search only
-                query = table.search(query_text=query_text)
-
-            # Apply filters if provided
-            if filter_criteria:
-                filter_expr = " AND ".join([
-                    f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
-                    for key, value in filter_criteria.items()
-                ])
-                query = query.where(filter_expr)
-
-            # Execute search
-            result = query.limit(limit).to_pandas()
-
-            # Process results
-            records = []
-            for _, row in result.iterrows():
-                record = row.to_dict()
-
-                # Parse metadata from JSON
-                if "metadata" in record and isinstance(record["metadata"], str):
-                    try:
-                        record["metadata"] = json.loads(record["metadata"])
-                    except json.JSONDecodeError:
-                        logger.warning(f"Could not parse metadata JSON")
-
-                records.append(record)
+                records = execute_search()
 
             LANCEDB_OPERATIONS.labels(
                 operation="hybrid_search",
