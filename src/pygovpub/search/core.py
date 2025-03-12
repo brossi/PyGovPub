@@ -5,11 +5,12 @@ This module provides the core search functionality for PyGovPub.
 """
 
 import logging
+import time
 from datetime import datetime
 from enum import Enum, auto
 from typing import Any, Dict, List, Optional, Set, Union, TypeVar, Generic, ClassVar
 
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, model_validator
 
 logger = logging.getLogger("pygovpub.search.core")
 
@@ -72,14 +73,12 @@ class SearchQuery(BaseModel):
     facets: List[str] = Field(default_factory=list)
     sources: List[str] = Field(default_factory=list)
     
-    @root_validator
-    def check_query_components(cls, values):
+    @model_validator(mode='after')
+    def check_query_components(self) -> 'SearchQuery':
         """Ensure query has either text or components."""
-        query_text = values.get('query_text')
-        components = values.get('components')
-        if not query_text and not components:
+        if not self.query_text and not self.components:
             raise ValueError("Either query_text or components must be provided")
-        return values
+        return self
 
 
 class Highlight(BaseModel):
@@ -210,14 +209,30 @@ class SearchManager:
         Returns:
             Combined search results
         """
+        start_time = time.time()
+        
         if not self.initialized:
             await self.initialize()
+        
+        # Log the search query details
+        components_summary = []
+        for comp in query.components:
+            if comp.field:
+                components_summary.append(f"{comp.field}={comp.value}")
+            elif comp.sub_components:
+                sub_comps = [f"{sc.field}={sc.value}" for sc in comp.sub_components if sc.field]
+                components_summary.append(f"({','.join(sub_comps)})")
+            elif comp.value:
+                components_summary.append(f"{comp.value}")
+                
+        logger.debug(f"Search query: text='{query.query_text}', components=[{', '.join(components_summary)}], offset={query.offset}, limit={query.limit}")
         
         # Determine which providers to use
         providers_to_use = []
         for name, provider in self.providers.items():
             if provider.can_handle(query):
                 providers_to_use.append(provider)
+                logger.debug(f"Using provider: {name}")
         
         if not providers_to_use:
             logger.warning(f"No providers available for query: {query}")
@@ -232,15 +247,23 @@ class SearchManager:
         all_results = []
         total_count = 0
         source_counts = {}
+        provider_timings = {}
         
         for provider in providers_to_use:
             try:
+                provider_start = time.time()
                 provider_results = await provider.search(query)
+                provider_end = time.time()
+                provider_time_ms = int((provider_end - provider_start) * 1000)
+                
                 all_results.extend(provider_results.results)
                 total_count += provider_results.total
                 
                 # Track source counts
                 source_counts[provider.provider_name] = provider_results.total
+                provider_timings[provider.provider_name] = provider_time_ms
+                
+                logger.debug(f"Provider {provider.provider_name} returned {provider_results.total} results in {provider_time_ms}ms")
                 
                 # Merge facets
                 # For now, we'll take the union of facet fields
@@ -250,10 +273,21 @@ class SearchManager:
                 logger.exception(f"Error searching with provider {provider.provider_name}: {e}")
         
         # Sort results by score
+        sorting_start = time.time()
         all_results.sort(key=lambda x: x.score, reverse=True)
+        sorting_time_ms = int((time.time() - sorting_start) * 1000)
         
         # Apply offset and limit
         paginated_results = all_results[query.offset:query.offset + query.limit]
+        
+        # Calculate total execution time
+        end_time = time.time()
+        execution_time_ms = int((end_time - start_time) * 1000)
+        
+        # Log performance metrics
+        logger.debug(f"Search completed in {execution_time_ms}ms (sorting: {sorting_time_ms}ms)")
+        logger.debug(f"Provider timings: {provider_timings}")
+        logger.debug(f"Total results: {total_count}, Source counts: {source_counts}")
         
         return SearchResults(
             total=total_count,
@@ -261,5 +295,6 @@ class SearchManager:
             limit=query.limit,
             query=query,
             results=paginated_results,
-            source_counts=source_counts
+            source_counts=source_counts,
+            execution_time_ms=execution_time_ms
         )

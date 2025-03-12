@@ -123,12 +123,13 @@ class DocumentIndexer(Indexer[Dict[str, Any]]):
         
         return tokens
     
-    def _index_text(self, document_id: DocumentId, text: str) -> None:
+    def _index_text(self, document_id: DocumentId, text: str, field: Optional[str] = None) -> None:
         """Index text content.
         
         Args:
             document_id: Document ID
             text: Text to index
+            field: Optional field name (for field-specific text indexing)
         """
         if not text:
             return
@@ -140,6 +141,13 @@ class DocumentIndexer(Indexer[Dict[str, Any]]):
             if token not in self.text_index:
                 self.text_index[token] = set()
             self.text_index[token].add(document_id)
+            
+            # If field is provided, create a field-specific text index entry
+            if field:
+                field_token_key = f"{field}:{token}"
+                if field_token_key not in self.text_index:
+                    self.text_index[field_token_key] = set()
+                self.text_index[field_token_key].add(document_id)
     
     def _index_field(self, document_id: DocumentId, field: FieldName, value: FieldValue) -> None:
         """Index a field.
@@ -224,14 +232,34 @@ class DocumentIndexer(Indexer[Dict[str, Any]]):
         
         # Index text content
         if entry.text_content:
-            self._index_text(document_id, entry.text_content)
+            self._index_text(document_id, entry.text_content, field="content")
         
         # Also index title
-        self._index_text(document_id, entry.title)
+        self._index_text(document_id, entry.title, field="title")
         
         # Index fields
         for field, value in entry.fields.items():
             self._index_field(document_id, field, value)
+            
+            # If field value is a string, also index it as text for better search
+            if isinstance(value, str) and len(value) > 3:  # Only index meaningful text
+                self._index_text(document_id, value, field=field)
+            
+        # Special handling for metadata field to ensure proper indexing of nested fields
+        if 'metadata' in entry.fields and isinstance(entry.fields['metadata'], dict):
+            metadata = entry.fields['metadata']
+            
+            # Create compound field indexes with the 'metadata.' prefix
+            for key, value in metadata.items():
+                metadata_field = f"metadata.{key}"
+                self._index_field(document_id, metadata_field, value)
+                
+                # If value is a string, also index it as text
+                if isinstance(value, str) and len(value) > 3:
+                    self._index_text(document_id, value, field=metadata_field)
+                
+            # Log metadata indexing
+            logger.debug(f"Indexed metadata fields for document {document_id}: {list(metadata.keys())}")
         
         return document_id
     
@@ -339,13 +367,98 @@ class DocumentIndexer(Indexer[Dict[str, Any]]):
         Returns:
             Set of matching document IDs
         """
+        # Special handling for known text fields: title and content
+        if field in ["title", "content"] and isinstance(value, str):
+            logger.debug(f"Performing text field search on {field}: {value}")
+            
+            # First try direct field match
+            key = (field, value)
+            direct_matches = self.field_index.get(key, set())
+            
+            # If no direct match, try using the text index with field prefix
+            if not direct_matches:
+                # Tokenize the search value
+                tokens = self._tokenize(value)
+                if tokens:
+                    field_token_key = f"{field}:{tokens[0]}"  # Use first token for field search
+                    matches = self.text_index.get(field_token_key, set())
+                    
+                    # If multiple tokens, intersect results
+                    for token in tokens[1:]:
+                        field_token_key = f"{field}:{token}"
+                        token_matches = self.text_index.get(field_token_key, set())
+                        matches &= token_matches
+                        if not matches:
+                            break
+                    
+                    logger.debug(f"Text field search on {field}={value} found {len(matches)} matches")
+                    return matches
+            
+            logger.debug(f"Direct field match for {field}={value} found {len(direct_matches)} matches")
+            return direct_matches
+            
         # Handle different value types for comparison
         if isinstance(value, dict):
             value = str(value)
+        
+        # Check for nested field search (contains '.')
+        if '.' in field:
+            logger.debug(f"Detected nested field search: {field}={value}")
+            field_parts = field.split('.')
             
-        # Direct field match
+            # Handle metadata.* fields specially
+            if field_parts[0] == 'metadata':
+                nested_field = '.'.join(field_parts[1:])
+                logger.debug(f"Searching in metadata field: {nested_field}={value}")
+                
+                # For metadata fields, try direct match first with metadata prefix
+                key = (field, value)
+                direct_matches = self.field_index.get(key, set())
+                
+                # If no direct matches, try searching in the nested field
+                if not direct_matches:
+                    nested_key = (nested_field, value)
+                    nested_matches = self.field_index.get(nested_key, set())
+                    
+                    # Try text search if value is a string and no direct matches
+                    if not nested_matches and isinstance(value, str):
+                        field_token_key = f"{field}:{self._tokenize(value)[0]}" if self._tokenize(value) else None
+                        if field_token_key and field_token_key in self.text_index:
+                            nested_matches = self.text_index.get(field_token_key, set())
+                            logger.debug(f"Found {len(nested_matches)} text matches for nested field: {field}")
+                    
+                    # If still no matches, search all documents and check metadata manually
+                    if not nested_matches:
+                        logger.debug(f"No indexed matches for {field}, checking all documents manually")
+                        nested_matches = set()
+                        for doc_id, doc in self.documents.items():
+                            # Check if the document has metadata field
+                            if 'metadata' in doc.fields:
+                                metadata = doc.fields['metadata']
+                                # Check if nested field exists in metadata with matching value
+                                if nested_field in metadata and metadata[nested_field] == value:
+                                    nested_matches.add(doc_id)
+                    
+                    logger.debug(f"Found {len(nested_matches)} matches for nested field: {nested_field}={value}")
+                    return nested_matches
+                
+                logger.debug(f"Found {len(direct_matches)} direct matches for: {field}={value}")
+                return direct_matches
+        
+        # Direct field match for non-nested fields
         key = (field, value)
         direct_matches = self.field_index.get(key, set())
+        
+        # If no direct matches and value is a string, try text search
+        if not direct_matches and isinstance(value, str):
+            tokens = self._tokenize(value)
+            if tokens:
+                # Try field-specific token search
+                field_token_key = f"{field}:{tokens[0]}"
+                if field_token_key in self.text_index:
+                    text_matches = self.text_index.get(field_token_key, set())
+                    logger.debug(f"Text field search for {field}:{tokens[0]} found {len(text_matches)} matches")
+                    return text_matches
         
         # Log debugging info
         logger.debug(f"Field search: {field}={value}, found {len(direct_matches)} direct matches")

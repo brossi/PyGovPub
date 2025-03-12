@@ -138,6 +138,46 @@ class LocalProvider(SearchProvider):
         
         # Process query components
         for component in query.components:
+            # Check if this is a component with sub_components (nested query)
+            if component.sub_components:
+                logger.debug(f"Processing nested query component with {len(component.sub_components)} sub-components")
+                
+                # Process sub-components
+                sub_results = None
+                for sub_component in component.sub_components:
+                    # Create a temporary query with just this sub-component
+                    temp_query = SearchQuery(components=[sub_component])
+                    
+                    # Execute the sub-query
+                    sub_result = await self.search(temp_query)
+                    sub_doc_ids = {r.result_id for r in sub_result.results}
+                    
+                    # Combine results based on parent component's operator
+                    if sub_results is None:
+                        sub_results = sub_doc_ids
+                    elif component.operator.value == "AND":
+                        sub_results &= sub_doc_ids
+                    elif component.operator.value == "OR":
+                        sub_results |= sub_doc_ids
+                    elif component.operator.value == "NOT":
+                        sub_results -= sub_doc_ids
+                
+                # If we have results from sub-components, apply them to main query
+                if sub_results:
+                    if first_component:
+                        matching_docs = sub_results
+                        first_component = False
+                    elif component.operator.value == "AND":
+                        matching_docs &= sub_results
+                    elif component.operator.value == "OR":
+                        matching_docs |= sub_results
+                    elif component.operator.value == "NOT":
+                        matching_docs -= sub_results
+                
+                logger.debug(f"After processing nested component: {len(matching_docs)} matches")
+                continue
+            
+            # Standard field search
             if component.field:
                 # Field search
                 if component.value is not None:

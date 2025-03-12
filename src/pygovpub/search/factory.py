@@ -50,12 +50,12 @@ async def create_search_manager(
     if include_govinfo and auth_manager:
         # Get client from auth manager
         try:
-            auth_request = auth_manager.authenticate_request(
+            auth_request = await auth_manager.authenticate_request(
                 source=ApiSource.GOVINFO,
                 endpoint="/"
             )
             
-            if auth_request and auth_request.api_key:
+            if auth_request and hasattr(auth_request, 'api_key') and auth_request.api_key:
                 govinfo_client = GovInfoClient(auth_manager=auth_manager)
                 govinfo_provider = GovInfoProvider(client=govinfo_client)
                 manager.register_provider(govinfo_provider)
@@ -68,12 +68,12 @@ async def create_search_manager(
     if include_congress and auth_manager:
         # Get client from auth manager
         try:
-            auth_request = auth_manager.authenticate_request(
+            auth_request = await auth_manager.authenticate_request(
                 source=ApiSource.CONGRESS,
                 endpoint="/"
             )
             
-            if auth_request and auth_request.api_key:
+            if auth_request and hasattr(auth_request, 'api_key') and auth_request.api_key:
                 congress_client = CongressClient(auth_manager=auth_manager)
                 congress_provider = CongressProvider(client=congress_client)
                 manager.register_provider(congress_provider)
