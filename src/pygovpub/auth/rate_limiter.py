@@ -468,13 +468,17 @@ class RateLimiter:
         
     def _parse_reset_time(self, headers: Dict[str, str], source: ApiSource) -> Optional[datetime]:
         """Parse rate limit reset time from headers."""
-        if source == ApiSource.CONGRESS:
-            reset_seconds = headers.get("x-ratelimit-reset")
-            if reset_seconds:
-                return datetime.fromtimestamp(int(reset_seconds), ZoneInfo("UTC"))
-        elif source == ApiSource.GOVINFO:
-            # GovInfo uses seconds until reset
-            reset_in = headers.get("x-rate-limit-reset")
-            if reset_in:
-                return datetime.now(ZoneInfo("UTC")) + timedelta(seconds=int(reset_in))
+        try:
+            if source == ApiSource.CONGRESS:
+                reset_seconds = headers.get("x-ratelimit-reset")
+                if reset_seconds:
+                    return datetime.fromtimestamp(int(reset_seconds), ZoneInfo("UTC"))
+            elif source == ApiSource.GOVINFO:
+                # GovInfo uses seconds until reset
+                reset_in = headers.get("x-rate-limit-reset")
+                if reset_in:
+                    return datetime.now(ZoneInfo("UTC")) + timedelta(seconds=int(reset_in))
+        except (ValueError, TypeError, OverflowError):
+            # Handle invalid values
+            logger.warning(f"Invalid rate limit reset value in headers for source {source}")
         return None

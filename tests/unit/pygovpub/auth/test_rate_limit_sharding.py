@@ -100,6 +100,73 @@ class TestRateLimitSharding:
             
             # Check that we executed an INSERT for the new entry
             assert any("INSERT INTO rate_limit_usage_test" in stmt for stmt in sql_statements)
+            
+    @patch("pygovpub.auth.rate_limiter.RateLimiter._ensure_partition_exists")
+    @patch("pygovpub.auth.models.RateLimitUsage.get_table_name")
+    async def test_track_request_with_existing_record(self, mock_get_table_name, mock_ensure_partition, rate_limiter, session):
+        """Test track_request with an existing record."""
+        # Mock the get_table_name method to return a fixed table name
+        mock_get_table_name.return_value = "rate_limit_usage_test"
+        
+        # Create rate limit headers
+        headers = {
+            "x-ratelimit-remaining": "100",
+            "x-ratelimit-reset": str(int((datetime.now(ZoneInfo("UTC")) + timedelta(hours=1)).timestamp()))
+        }
+        
+        # Create SQL statements that would be executed
+        with patch.object(session, "execute") as mock_execute:
+            # Configure mock to simulate finding an existing entry
+            mock_execute.return_value.first.return_value = (123,)  # Record with ID 123
+            
+            # Track a request
+            await rate_limiter.track_request(
+                source=ApiSource.CONGRESS,
+                endpoint="/bills",
+                status_code=200,
+                rate_limit_headers=headers,
+                response_time_ms=150,
+                success=True
+            )
+            
+            # Verify partition was created
+            mock_ensure_partition.assert_called_once()
+            
+            # Verify correct SQL statements were executed
+            # Extract SQL from the mock calls
+            sql_statements = [
+                call.args[0].text if hasattr(call.args[0], 'text') else str(call.args[0])
+                for call in mock_execute.call_args_list
+            ]
+            
+            # Check that we executed a SELECT to check for existing entry
+            assert any("SELECT id FROM rate_limit_usage_test" in stmt for stmt in sql_statements)
+            
+            # Check that we executed an UPDATE for the existing entry
+            assert any("UPDATE rate_limit_usage_test" in stmt for stmt in sql_statements)
+            assert any("request_count = request_count + 1" in stmt for stmt in sql_statements)
+            
+    @patch("pygovpub.auth.rate_limiter.RateLimiter._ensure_partition_exists")
+    @patch("pygovpub.auth.models.RateLimitUsage.get_table_name")
+    async def test_track_request_without_rate_limit_headers(self, mock_get_table_name, mock_ensure_partition, rate_limiter, session):
+        """Test track_request without rate limit headers."""
+        # Create SQL statements that would be executed
+        with patch.object(session, "add") as mock_add:
+            # Track a request without rate limit headers
+            await rate_limiter.track_request(
+                source=ApiSource.CONGRESS,
+                endpoint="/bills",
+                status_code=200,
+                rate_limit_headers=None,  # No headers
+                response_time_ms=150,
+                success=True
+            )
+            
+            # Verify partition was NOT created (no headers = no sharding)
+            mock_ensure_partition.assert_not_called()
+            
+            # Verify base ApiUsage record was added
+            assert mock_add.call_count == 1
     
     @patch("pygovpub.auth.rate_limiter.RateLimiter._ensure_partition_exists")
     @patch("pygovpub.auth.models.RateLimitUsage.get_table_name")
@@ -137,6 +204,146 @@ class TestRateLimitSharding:
             # Verify results
             assert allowed is True
             assert returned_reset_time == reset_time
+            
+    @patch("pygovpub.auth.rate_limiter.RateLimiter._ensure_partition_exists")
+    @patch("pygovpub.auth.models.RateLimitUsage.get_table_name")
+    async def test_check_rate_limit_no_remaining(self, mock_get_table_name, mock_ensure_partition, rate_limiter, session):
+        """Test check_rate_limit with no remaining requests."""
+        # Mock the get_table_name method to return a fixed table name
+        mock_get_table_name.return_value = "rate_limit_usage_test"
+        
+        # Set up the session to return results from the sharded table
+        reset_time = datetime.now(ZoneInfo("UTC")) + timedelta(hours=1)
+        
+        with patch.object(session, "execute") as mock_execute:
+            # First check if table exists
+            mock_execute.return_value.first.side_effect = [
+                (1,),  # Table exists
+                (0, reset_time)  # No remaining requests
+            ]
+            
+            # Check rate limit
+            allowed, returned_reset_time = await rate_limiter.check_rate_limit(ApiSource.CONGRESS)
+            
+            # Verify results - should not be allowed
+            assert allowed is False
+            assert returned_reset_time == reset_time
+            
+    @patch("pygovpub.auth.rate_limiter.RateLimiter._ensure_partition_exists")
+    @patch("pygovpub.auth.models.RateLimitUsage.get_table_name")
+    async def test_check_rate_limit_table_does_not_exist(self, mock_get_table_name, mock_ensure_partition, rate_limiter, session):
+        """Test check_rate_limit when sharded table doesn't exist."""
+        # Mock the get_table_name method to return a fixed table name
+        mock_get_table_name.return_value = "rate_limit_usage_test"
+        
+        with patch.object(session, "execute") as mock_execute:
+            # Table doesn't exist
+            mock_execute.return_value.first.return_value = None
+            
+            # Configure exec to return an ApiUsage instance with rate limit info
+            with patch.object(session, "exec") as mock_exec:
+                # Create a mock result
+                mock_result = MagicMock()
+                mock_result.rate_limit_remaining = 100
+                reset_time = datetime.now(ZoneInfo("UTC")) + timedelta(hours=1)
+                mock_result.rate_limit_reset = reset_time
+                
+                # Return this mock result from the exec query
+                mock_exec.return_value.first.return_value = mock_result
+                
+                # Check rate limit
+                allowed, returned_reset_time = await rate_limiter.check_rate_limit(ApiSource.CONGRESS)
+                
+                # Verify it falls back to the ApiUsage table
+                assert mock_exec.called
+                
+                # Verify results
+                assert allowed is True
+                assert returned_reset_time == reset_time
+                
+    @patch("pygovpub.auth.rate_limiter.RateLimiter._ensure_partition_exists")
+    @patch("pygovpub.auth.models.RateLimitUsage.get_table_name")
+    async def test_check_rate_limit_no_db_data(self, mock_get_table_name, mock_ensure_partition, rate_limiter, session):
+        """Test check_rate_limit when no data in DB."""
+        # Mock the get_table_name method to return a fixed table name
+        mock_get_table_name.return_value = "rate_limit_usage_test"
+        
+        with patch.object(session, "execute") as mock_execute:
+            # No sharded table data
+            mock_execute.return_value.first.return_value = None
+            
+            # No ApiUsage data either
+            with patch.object(session, "exec") as mock_exec:
+                mock_exec.return_value.first.return_value = None
+                
+                # Check rate limit - should fall back to in-memory tracking
+                allowed, _ = await rate_limiter.check_rate_limit(ApiSource.CONGRESS)
+                
+                # Should use the in-memory tracking which has default values
+                assert allowed is True
+                
+    async def test_ensure_partition_exists(self, rate_limiter, session):
+        """Test _ensure_partition_exists method."""
+        now = datetime.now(ZoneInfo("UTC"))
+        
+        with patch.object(session, "execute") as mock_execute:
+            # First return that table doesn't exist
+            mock_execute.return_value.first.return_value = None
+            
+            # Call the method
+            rate_limiter._ensure_partition_exists(
+                session,
+                ApiSource.CONGRESS,
+                now
+            )
+            
+            # Extract SQL statements
+            sql_statements = [
+                call.args[0].text if hasattr(call.args[0], 'text') else str(call.args[0])
+                for call in mock_execute.call_args_list
+            ]
+            
+            # Should check if table exists
+            assert any("SELECT 1 FROM pg_tables" in stmt for stmt in sql_statements)
+            
+            # Should create the table
+            assert any("CREATE TABLE IF NOT EXISTS" in stmt for stmt in sql_statements)
+            
+    async def test_ensure_partition_exists_already_exists(self, rate_limiter, session):
+        """Test _ensure_partition_exists when partition already exists."""
+        now = datetime.now(ZoneInfo("UTC"))
+        
+        with patch.object(session, "execute") as mock_execute:
+            # Return that table already exists
+            mock_execute.return_value.first.return_value = (1,)
+            
+            # Call the method
+            rate_limiter._ensure_partition_exists(
+                session,
+                ApiSource.CONGRESS,
+                now
+            )
+            
+            # Should only check if table exists, not try to create it
+            assert mock_execute.call_count == 1
+            
+    async def test_ensure_partition_exists_error(self, rate_limiter, session):
+        """Test _ensure_partition_exists with an error."""
+        now = datetime.now(ZoneInfo("UTC"))
+        
+        with patch.object(session, "execute") as mock_execute:
+            # Simulate an error
+            mock_execute.side_effect = Exception("Test error")
+            
+            # Call the method - should not raise exception
+            rate_limiter._ensure_partition_exists(
+                session,
+                ApiSource.CONGRESS,
+                now
+            )
+            
+            # Should attempt to execute but handle the error
+            assert mock_execute.called
     
     @patch("pygovpub.auth.rate_limiter.RateLimiter._ensure_partition_exists")
     async def test_purge_old_rate_limit_data(self, mock_ensure_partition, rate_limiter, session):
