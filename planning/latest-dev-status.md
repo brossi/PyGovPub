@@ -41,8 +41,8 @@ For detailed accomplishments, see [completed-dev.md](./completed-dev.md).
 
 ### 1.3 Coverage Status
 
-Current overall coverage: **81.2%** (improved from 80.1%, 78.3%, 76.5%, 74.5%, 73.0%, 64.0%, initial 47.2%)
-Projected overall coverage after implementing remaining work: ~85.0%
+Current overall coverage: **83.5%** (improved from 81.2%, 80.1%, 78.3%, 76.5%, 74.5%, 73.0%, 64.0%, initial 47.2%)
+Projected overall coverage after implementing remaining work: ~87.0%
 
 Key coverage metrics:
 - Contract validation: 91%
@@ -80,11 +80,12 @@ Coverage highlights:
 
 🔶 **DB-002: Advanced Database Enhancements** has been partially implemented with:
 - Query optimization system with statistics tracking and performance analysis (53% coverage)
-- Full-text search integration with PostgreSQL capabilities (84% coverage)
-- Advanced partitioning strategies for time-series and categorical data
-- Specialized test fixtures for complex database scenarios
+- Full-text search integration with PostgreSQL capabilities (87% coverage)
+- Advanced partitioning strategies for time-series and categorical data (79% coverage)
+- Advanced database fixtures with FTS and partitioning support (85% coverage)
+- Database performance monitoring statistics and archive management (74% coverage)
 
-Initial modules are complete and validated for both SQLite (development) and PostgreSQL (production) environments, with comprehensive test coverage for the query optimization and full-text search components.
+Initial modules are complete and validated for both SQLite (development) and PostgreSQL (production) environments, with comprehensive test coverage for the query optimization, full-text search, and partitioning components.
 
 ### 3.2 Implementation Priorities
 
