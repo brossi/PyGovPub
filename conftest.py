@@ -227,7 +227,8 @@ def temp_db_path() -> Generator[str, None, None]:
                         f.write(f"{db_file}\n")
     else:
         # Use in-memory database with shared cache to prevent leaking files
-        db_path = "sqlite:///:memory:?cache=shared&mode=memory"
+        # The file: prefix with uri=true ensures it stays truly in memory
+        db_path = "sqlite:///file::memory:?cache=shared&mode=memory&uri=true"
         yield db_path
 
 
@@ -273,24 +274,61 @@ def cleanup_orphaned_files():
         for test_dir in [
             Path(__file__).parent / "tmp" / "artifacts",
             Path(__file__).parent / "tmp" / "test_dbs",
+            Path(__file__).parent / "tmp" / "sqlite_files",
             Path(__file__).parent / "test_artifacts" / "db",
             Path(__file__).parent / "test_artifacts" / "cache"
         ]:
-            if test_dir.exists():
-                for item in test_dir.iterdir():
-                    if item.name == ".gitkeep" or item.name == "_cleanup_list.txt":
-                        continue
-                        
+            if not test_dir.exists():
+                continue
+                
+            # Check for a cleanup list in this directory
+            cleanup_file = test_dir / "_cleanup_list.txt"
+            if cleanup_file.exists():
+                try:
+                    with open(cleanup_file, "r") as f:
+                        files_to_clean = f.read().splitlines()
+                    
+                    # Try to delete each file
+                    remaining_files = []
+                    for file_path in files_to_clean:
+                        file_path = Path(file_path.strip())
+                        if file_path.exists():
+                            try:
+                                file_path.unlink()
+                                print(f"Cleaned up orphaned file: {file_path}")
+                            except (PermissionError, OSError):
+                                remaining_files.append(file_path)
+                    
+                    # Rewrite the cleanup list with only the files we couldn't delete
+                    with open(cleanup_file, "w") as f:
+                        for file_path in remaining_files:
+                            f.write(f"{file_path}\n")
+                except Exception as e:
+                    print(f"Error processing cleanup list in {test_dir}: {e}")
+            
+            # Process all files in the directory
+            for item in test_dir.iterdir():
+                if item.name == ".gitkeep" or item.name == "_cleanup_list.txt":
+                    continue
+                    
+                try:
+                    item_stat = item.stat()
+                    # If older than 1 day (86400 seconds)
+                    if time.time() - item_stat.st_mtime > 86400:
+                        if item.is_file():
+                            item.unlink()
+                            print(f"Cleaned up old file: {item}")
+                        elif item.is_dir():
+                            shutil.rmtree(item)
+                            print(f"Cleaned up old directory: {item}")
+                except (PermissionError, OSError) as e:
+                    print(f"Could not clean up {item}: {e}")
+                    # Add to cleanup list for future attempts
                     try:
-                        item_stat = item.stat()
-                        # If older than 1 day (86400 seconds)
-                        if time.time() - item_stat.st_mtime > 86400:
-                            if item.is_file():
-                                item.unlink()
-                            elif item.is_dir():
-                                shutil.rmtree(item)
-                    except (PermissionError, OSError) as e:
-                        print(f"Could not clean up {item}: {e}")
+                        with open(test_dir / "_cleanup_list.txt", "a") as f:
+                            f.write(f"{item}\n")
+                    except:
+                        pass
     except Exception as e:
         print(f"Error cleaning up old test artifacts: {e}")
         

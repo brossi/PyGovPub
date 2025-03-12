@@ -14,6 +14,7 @@ performance optimization features including:
 import os
 import logging
 import time
+import atexit
 from typing import Optional, Dict, Callable, List, Any, AsyncGenerator, Generator, Union, TypeVar, Tuple
 from datetime import datetime
 from contextlib import contextmanager, asynccontextmanager
@@ -74,11 +75,42 @@ def get_connection_url() -> str:
     # Construct URL based on database type
     if db_type == "sqlite":
         if db_host == ":memory:" or not db_host:
-            # Use query parameters to add cache=shared for better concurrency 
-            # and to prevent file creation with UUIDs in memory mode
-            # Use mode=memory and uri=true to ensure it stays in memory
-            # The file: prefix helps SQLAlchemy recognize it as a URI
-            return "sqlite:///file::memory:?cache=shared&mode=memory&uri=true"
+            # Import additional modules needed for this path
+            import tempfile
+            import uuid
+            from pathlib import Path
+            
+            # Use a managed directory in the project for SQLite temp files
+            project_root = Path(__file__).absolute().parents[3]  # Go up 3 levels from this file
+            sqlite_dir = project_root / "tmp" / "sqlite_files"
+            
+            # Create directory if needed
+            os.makedirs(sqlite_dir, exist_ok=True)
+            
+            # Create a unique temp file name with timestamp to aid in debugging
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            temp_db_file = sqlite_dir / f"sqlite_temp_{timestamp}_{uuid.uuid4().hex}.db"
+            
+            # Ensure the file gets deleted when the process exits
+            @atexit.register
+            def cleanup_db_file():
+                if temp_db_file.exists():
+                    try:
+                        temp_db_file.unlink()
+                    except (PermissionError, OSError) as e:
+                        # Log error but don't crash
+                        logger.warning(f"Could not delete temp SQLite file {temp_db_file}: {e}")
+                        # Write to cleanup list for future cleanup
+                        cleanup_list = sqlite_dir / "_cleanup_list.txt"
+                        try:
+                            with open(cleanup_list, "a") as f:
+                                f.write(f"{temp_db_file}\n")
+                        except:
+                            pass
+                            
+            # Return file-based URL but with temp file that will be cleaned up
+            return f"sqlite:///{temp_db_file}"
         return f"sqlite:///{db_host}"
     
     # For PostgreSQL and MySQL, include user/password if provided
