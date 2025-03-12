@@ -185,6 +185,88 @@ class TestInMemoryFallback:
         
         # Verify wait_for_capacity was called
         mock_wait_for_capacity.assert_called_once_with(ApiSource.CONGRESS)
+        
+    @patch("pygovpub.auth.rate_limiter.RateLimiter.check_rate_limit")
+    async def test_throttling_exception_strategy(self, mock_check_rate_limit, rate_limiter):
+        """Test throttling with exception strategy."""
+        # Set strategy to EXCEPTION
+        rate_limiter.strategy = ThrottleStrategy.EXCEPTION
+        
+        # Configure mock to simulate rate limit exceeded
+        reset_time = datetime.now(UTC) + timedelta(seconds=1)
+        mock_check_rate_limit.return_value = (False, reset_time)
+        
+        # Pre-request should raise an exception when limit exceeded
+        with pytest.raises(Exception) as exc:
+            await rate_limiter.pre_request(ApiSource.CONGRESS)
+            
+        # Verify the exception contains the expected information
+        assert "Rate limit exceeded" in str(exc.value)
+        assert "CONGRESS" in str(exc.value)
+        
+        # Verify check_rate_limit was called
+        mock_check_rate_limit.assert_called_once_with(ApiSource.CONGRESS)
+        
+    @patch("pygovpub.auth.rate_limiter.RateLimiter.check_rate_limit")
+    @patch("pygovpub.auth.rate_limiter.RateLimiter.wait_for_capacity")
+    async def test_throttling_queue_strategy(self, mock_wait_for_capacity, mock_check_rate_limit, rate_limiter):
+        """Test throttling with queue strategy."""
+        # Set strategy to QUEUE
+        rate_limiter.strategy = ThrottleStrategy.QUEUE
+        
+        # Configure mock to simulate rate limit exceeded
+        reset_time = datetime.now(UTC) + timedelta(seconds=1)
+        mock_check_rate_limit.return_value = (False, reset_time)
+        
+        # Set up wait_for_capacity mock to do nothing
+        mock_wait_for_capacity.return_value = None
+        
+        # Pre-request should queue the request (currently just waits)
+        await rate_limiter.pre_request(ApiSource.CONGRESS)
+        
+        # Verify check_rate_limit was called
+        mock_check_rate_limit.assert_called_once_with(ApiSource.CONGRESS)
+        
+        # Verify wait_for_capacity was called (current implementation for queuing)
+        mock_wait_for_capacity.assert_called_once_with(ApiSource.CONGRESS)
+        
+    def test_parse_headers(self, rate_limiter):
+        """Test parsing rate limit headers for different API sources."""
+        # Test parsing Congress.gov headers
+        congress_headers = {
+            "x-ratelimit-remaining": "42",
+            "x-ratelimit-reset": str(int(time.time()) + 3600)  # 1 hour from now
+        }
+        
+        # Parse remaining
+        remaining = rate_limiter._parse_remaining(congress_headers, ApiSource.CONGRESS)
+        assert remaining == 42
+        
+        # Parse reset time
+        reset_time = rate_limiter._parse_reset_time(congress_headers, ApiSource.CONGRESS)
+        assert reset_time is not None
+        assert isinstance(reset_time, datetime)
+        
+        # Test parsing GovInfo.gov headers
+        govinfo_headers = {
+            "x-rate-limit-remaining": "100",
+            "x-rate-limit-reset": "3600"  # seconds until reset
+        }
+        
+        # Parse remaining
+        remaining = rate_limiter._parse_remaining(govinfo_headers, ApiSource.GOVINFO)
+        assert remaining == 100
+        
+        # Parse reset time
+        reset_time = rate_limiter._parse_reset_time(govinfo_headers, ApiSource.GOVINFO)
+        assert reset_time is not None
+        assert isinstance(reset_time, datetime)
+        
+        # Test invalid headers
+        invalid_headers = {}
+        # The implementation returns 0 for missing remaining, not None
+        assert rate_limiter._parse_remaining(invalid_headers, ApiSource.CONGRESS) == 0
+        assert rate_limiter._parse_reset_time(invalid_headers, ApiSource.CONGRESS) is None
 
 
 if __name__ == "__main__":
