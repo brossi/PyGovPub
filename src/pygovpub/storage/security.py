@@ -14,8 +14,11 @@ import os
 from typing import Any, Dict, Optional, Set, Union
 
 import structlog
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet as CryptoFernet
 from pydantic_settings import BaseSettings
+
+# Alias for better clarity and to avoid import issues in methods
+Fernet = CryptoFernet
 
 logger = structlog.get_logger()
 
@@ -32,9 +35,11 @@ class SecuritySettings(BaseSettings):
     # Encryption settings
     ENCRYPTION_KEY: Optional[str] = None
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "allow"  # Allow extra fields from environment
+    }
 
 class StorageSecurity:
     """Handles targeted encryption for sensitive metadata fields"""
@@ -91,7 +96,12 @@ class StorageSecurity:
                     key_file.write(key.encode('utf-8'))
                 logger.info("Generated new encryption key")
 
-        return Fernet(key.encode('utf-8') if isinstance(key, str) else key)
+        # Convert to bytes if it's a string
+        key_bytes = key.encode('utf-8') if isinstance(key, str) else key
+        
+        # Create cipher
+        cipher = Fernet(key_bytes)
+        return cipher
 
     def process_metadata(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
