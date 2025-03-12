@@ -356,6 +356,86 @@ result = session.exec(
 ).all()
 ```
 
+### Table Partitioning
+
+For high-volume tables, PyGovPub supports partitioning to improve query performance and facilitate data management. This is particularly valuable for API rate limit tracking across multiple data sources.
+
+```python
+from datetime import datetime
+from sqlmodel import Field, SQLModel
+from typing import Optional
+from pygovpub.models.base import BaseTable
+
+class PartitionedTable(BaseTable, table=True):
+    __tablename__ = "partitioned_table"
+    
+    id: int = Field(primary_key=True)
+    source: str = Field(index=True)  # Partition key
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    data: str
+
+    @classmethod
+    def get_table_name(cls, source: str, date: datetime) -> str:
+        """Generate table name for a specific partition."""
+        year = date.year
+        month = date.month
+        return f"{cls.__tablename__}_{source.lower()}_{year}_{month}"
+        
+    @classmethod
+    def create_monthly_partition(cls, engine, source: str, year: int, month: int) -> None:
+        """Create a new monthly partition."""
+        table_name = cls.get_table_name(source, datetime(year, month, 1))
+        with engine.begin() as conn:
+            conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {table_name} PARTITION OF {cls.__tablename__}
+            FOR VALUES IN ('{source}')
+            """))
+```
+
+Working with partitioned tables:
+
+```python
+# Create main table with partition definition
+with engine.begin() as conn:
+    conn.execute(text("""
+    CREATE TABLE partitioned_table (
+        id SERIAL PRIMARY KEY,
+        source TEXT NOT NULL,
+        timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+        data TEXT
+    ) PARTITION BY LIST (source)
+    """))
+
+# Create monthly partitions
+current_date = datetime.now()
+PartitionedTable.create_monthly_partition(
+    engine, 
+    "source1", 
+    current_date.year,
+    current_date.month
+)
+
+# Insert into the table (automatically routed to correct partition)
+with Session(engine) as session:
+    item = PartitionedTable(source="source1", data="example")
+    session.add(item)
+    session.commit()
+    
+# Query across all partitions
+with Session(engine) as session:
+    results = session.query(PartitionedTable).all()
+    
+# Query a specific partition directly
+with engine.begin() as conn:
+    partition_name = PartitionedTable.get_table_name(
+        "source1", 
+        datetime(2025, 3, 1)
+    )
+    
+    stmt = text(f"SELECT * FROM {partition_name} WHERE data = :value")
+    result = conn.execute(stmt, {"value": "example"}).fetchall()
+```
+
 ## Testing with Database Fixtures
 
 The PyGovPub test suite includes comprehensive fixtures for database testing across SQLite and PostgreSQL backends.

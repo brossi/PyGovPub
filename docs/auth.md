@@ -77,6 +77,57 @@ from pygovpub.auth.rate_limiter import ThrottleStrategy
 auth_manager = AuthManager(rate_limit_strategy=ThrottleStrategy.QUEUE)
 ```
 
+### Advanced Rate Limit Tracking
+
+PyGovPub uses a sophisticated system to track API rate limits:
+
+1. **Database-backed tracking**: Rate limits are stored in partitioned database tables for high performance
+2. **In-memory fallback**: If database operations fail, the system falls back to in-memory tracking
+3. **Response header parsing**: Automatically parses rate limit information from API responses
+4. **Per-source limit enforcement**: Each API source has its own independent rate limit tracking
+5. **Monthly partitioning**: Rate limit data is automatically partitioned by month for efficient storage
+
+Example usage of direct rate limiter access:
+
+```python
+from pygovpub.auth.rate_limiter import RateLimiter
+from pygovpub.auth.models import ApiSource
+import asyncio
+
+# Create rate limiter
+rate_limiter = RateLimiter()
+
+async def main():
+    # Pre-check if a request will be allowed
+    allowed, reset_time = await rate_limiter.check_rate_limit(ApiSource.CONGRESS)
+    
+    if allowed:
+        # Notify rate limiter before making request
+        await rate_limiter.pre_request(ApiSource.CONGRESS)
+        
+        # Make your request here...
+        
+        # Update rate limiter with response headers
+        await rate_limiter.track_request(
+            source=ApiSource.CONGRESS,
+            endpoint="/bills",
+            status_code=200,
+            rate_limit_headers={
+                "x-ratelimit-remaining": "4998",
+                "x-ratelimit-reset": "1617235200"
+            }
+        )
+    else:
+        print(f"Rate limited until {reset_time}")
+
+# Purge old rate limit data (maintenance)
+async def cleanup():
+    # Keep only last 3 months of rate limit data
+    await rate_limiter.purge_old_rate_limit_data(months_to_keep=3)
+
+asyncio.run(main())
+```
+
 ## Making Authenticated Requests
 
 ```python
