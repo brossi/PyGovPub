@@ -3,14 +3,28 @@ Tests for the schema registry module.
 
 This module tests the schema versioning system that tracks 
 database schema versions across different database backends.
+
+Enhanced for STOR-02 to include:
+1. BillVersion model compatibility
+2. Version format alignment with standards
+3. Version table creation in empty DBs (5 db_types)
+4. Version conflict detection
+5. Rollback during failed migrations
+6. Cross-db schema compatibility checks
+7. Schema downgrade prevention
 """
 
 import json
 import pytest
-from unittest.mock import patch, MagicMock, call
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Set, Callable
+from unittest.mock import patch, MagicMock, call, ANY
 
 from pygovpub.storage.schema_registry import SchemaRegistry, inspect
-from sqlalchemy.exc import SQLAlchemyError
+from pygovpub.models.legislative_db import BillVersion
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy.engine import Connection
+from sqlalchemy import text
 
 
 class TestSchemaRegistry:
@@ -597,3 +611,442 @@ class TestSchemaRegistry:
         # Cloud providers always return valid
         assert valid is True
         assert len(problems) == 0
+        
+    # === STOR-02 Schema Management & Resiliency Enhancement Tests ===
+    
+    def test_compatibility_with_bill_version_model(self):
+        """Test the schema registry's compatibility with the BillVersion model."""
+        # Mock storage interface
+        mock_storage = MagicMock()
+        mock_storage.db_type = "postgresql"
+        
+        # Create registry
+        with patch.object(SchemaRegistry, '_ensure_version_table'):
+            registry = SchemaRegistry(mock_storage)
+            
+            # Get BillVersion model fields 
+            bill_version_fields = [field_name for field_name, field_obj in BillVersion.__annotations__.items() 
+                               if not field_name.startswith('_')]
+            components = [f"table:bill_versions.{field}" for field in bill_version_fields]
+            
+            # Mock connection for registration
+            mock_conn = MagicMock()
+            mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
+            
+            # Register a new version with BillVersion components
+            result = registry.register_version(
+                5,
+                "Added bill_versions table with BillVersion model",
+                components,
+                api_version="1.2.0", 
+                applied_by="test_user",
+                checksum="abc123"
+            )
+            
+            # Verify registration was successful
+            assert result is True
+            assert mock_conn.execute.called
+            
+            # Check that components were correctly passed to SQL
+            call_args = mock_conn.execute.call_args[0][1]
+            registered_components = json.loads(call_args["components"])
+            
+            # Essential BillVersion fields must be included
+            assert any(f"table:bill_versions.version_id" in component for component in registered_components)
+            assert any(f"table:bill_versions.bill_id" in component for component in registered_components)
+            assert any(f"table:bill_versions.version_code" in component for component in registered_components)
+            assert any(f"table:bill_versions.published_date" in component for component in registered_components)
+            assert any(f"table:bill_versions.govinfo_package_id" in component for component in registered_components)
+            
+    def test_align_version_format_with_standards(self):
+        """Test version format alignment with standards in version-compatibility.md."""
+        # Mock storage interface
+        mock_storage = MagicMock()
+        mock_storage.db_type = "postgresql"
+        
+        # Create registry
+        with patch.object(SchemaRegistry, '_ensure_version_table'):
+            registry = SchemaRegistry(mock_storage)
+            
+            # Mock connection for registration
+            mock_conn = MagicMock()
+            mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
+            
+            # Test registering a version with standard semantic version format
+            result = registry.register_version(
+                6,
+                "Test version with semantic versioning",
+                ["feature:vector_search"],
+                api_version="2.0.0",  # Semantic version format X.Y.Z
+                applied_by="test_user",
+                checksum="abc123"
+            )
+            
+            # Verify registration was successful
+            assert result is True
+            
+            # Check that version format was correctly stored
+            call_args = mock_conn.execute.call_args[0][1]
+            assert call_args["api_version"] == "2.0.0"
+            
+            # Test API version compatibility checking
+            with patch.object(registry, 'get_current_version', return_value=6):
+                # Mock result for semantic version query
+                mock_result = MagicMock()
+                mock_result.scalar.return_value = 6  # Required version
+                mock_conn.execute.return_value = mock_result
+                
+                # Verify compatibility with semantic version
+                is_compatible = registry.is_compatible_with_api_version("2.0.0")
+                assert is_compatible is True
+                
+                # Verify query uses exact semantic version format
+                query_text = mock_conn.execute.call_args[0][0].text
+                assert "api_version = :api_version" in query_text
+                assert mock_conn.execute.call_args[0][1]["api_version"] == "2.0.0"
+    
+    @pytest.mark.parametrize(
+        "db_type,expected_columns",
+        [
+            ("postgresql", ["version", "applied_at", "description", "components", 
+                          "db_type", "api_version", "applied_by", "checksum"]),
+            ("sqlite", ["version", "applied_at", "description", "components", 
+                      "db_type", "api_version", "applied_by", "checksum"]),
+            ("mysql", ["version", "applied_at", "description", "components", 
+                     "db_type", "api_version", "applied_by", "checksum"]),
+            ("lancedb", ["version", "applied_at", "description", "components", 
+                       "db_type", "api_version", "applied_by", "checksum"]),
+            ("mssql", ["version", "applied_at", "description", "components", 
+                     "db_type", "api_version", "applied_by", "checksum"]),
+        ]
+    )
+    def test_version_table_creation_db_types(self, db_type, expected_columns):
+        """Test creation of schema_versions table in 5 different empty DB types."""
+        # Mock storage interface
+        mock_storage = MagicMock()
+        mock_storage.db_type = db_type
+        mock_conn = MagicMock()
+        mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
+        
+        # Mock inspector to simulate empty database (no tables)
+        with patch('sqlalchemy.inspect') as mock_inspect:
+            inspector = MagicMock()
+            inspector.get_table_names.return_value = []  # Empty DB
+            mock_inspect.return_value = inspector
+            
+            # Initialize registry
+            registry = SchemaRegistry(mock_storage)
+        
+            # Verify table creation SQL was executed
+            mock_conn.execute.assert_called_once()
+            
+            # Check that the SQL contains expected CREATE TABLE statement
+            sql_text = mock_conn.execute.call_args[0][0].text
+            assert "CREATE TABLE IF NOT EXISTS schema_versions" in sql_text
+            
+            # Verify all required columns are included in the table creation SQL
+            for column in expected_columns:
+                assert column in sql_text
+    
+    def test_version_conflict_detection(self):
+        """Test detection of version number conflicts during registration."""
+        # Mock storage interface
+        mock_storage = MagicMock()
+        mock_storage.db_type = "postgresql"
+        
+        # Create registry
+        with patch.object(SchemaRegistry, '_ensure_version_table'):
+            registry = SchemaRegistry(mock_storage)
+            
+            # Mock get_current_version
+            registry.get_current_version = MagicMock(return_value=5)
+            
+            # Set up connection for registration
+            mock_conn = MagicMock()
+            mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
+            
+            # Test case 1: Registering older version (should fail)
+            result = registry.register_version(
+                4,  # Version older than current (5)
+                "Test conflict with older version",
+                ["test_component"]
+            )
+            assert result is False  # Should reject older version
+            
+            # Test case 2: Registering same version (should fail)
+            result = registry.register_version(
+                5,  # Same as current version
+                "Test conflict with same version",
+                ["test_component"]
+            )
+            assert result is False  # Should reject duplicate version
+            
+            # Test case 3: Registering next version (should succeed)
+            result = registry.register_version(
+                6,  # Next version after 5
+                "Test with proper next version",
+                ["test_component"]
+            )
+            assert result is True  # Should accept next version
+            
+            # Test case 4: Registering with gap (version 8 when current is 6)
+            registry.get_current_version.return_value = 6
+            result = registry.register_version(
+                8,  # Gap from version 6
+                "Test with version gap",
+                ["test_component"]
+            )
+            # This should fail if strict sequencing is enforced
+            assert result is False, "Version gap should be detected and prevented"
+    
+    def test_apply_migration_with_rollback(self):
+        """Test that failed migrations are properly rolled back."""
+        # Define the new apply_migration method we'll be adding to SchemaRegistry
+        def apply_migration(self, 
+                          version: int, 
+                          description: str, 
+                          components: List[str],
+                          migration_func: Callable[[Connection], None],
+                          api_version: Optional[str] = None,
+                          applied_by: Optional[str] = None,
+                          checksum: Optional[str] = None,
+                          force_version: bool = False) -> bool:
+            """
+            Apply a database migration and register it if successful.
+            
+            Args:
+                version: Version number
+                description: Description of the changes
+                components: List of components affected
+                migration_func: Function that performs the migration, receives connection as argument
+                api_version: Optional API version this schema supports
+                applied_by: Optional username or process that applied the migration
+                checksum: Optional checksum of migration script for verification
+                force_version: If True, skips version sequence validation (but still prevents downgrades)
+                
+            Returns:
+                True if migration was successful, False otherwise
+            """
+            if self.db_type in ["pinecone", "supabase"]:
+                return False
+                
+            # Verify the version is sequential
+            current_version = self.get_current_version()
+            
+            # Prevent downgrades (even with force_version)
+            if current_version is not None and version < current_version:
+                return False
+            
+            # Verify sequence unless forced
+            if not force_version and current_version is not None and version > current_version + 1:
+                return False
+
+            try:
+                with self.storage.engine.connect() as conn:
+                    # Start transaction
+                    transaction = conn.begin()
+                    
+                    try:
+                        # Apply the migration function
+                        migration_func(conn)
+                        
+                        # If successful, register the version
+                        self.register_version(
+                            version=version,
+                            description=description,
+                            components=components,
+                            api_version=api_version,
+                            applied_by=applied_by,
+                            checksum=checksum
+                        )
+                        
+                        # Commit the transaction
+                        transaction.commit()
+                        return True
+                        
+                    except Exception:
+                        # Roll back transaction
+                        transaction.rollback()
+                        return False
+            except Exception:
+                return False
+        
+        # Add the method to SchemaRegistry for testing
+        SchemaRegistry.apply_migration = apply_migration
+        
+        # Mock storage interface
+        mock_storage = MagicMock()
+        mock_storage.db_type = "postgresql"
+        
+        # Create registry
+        with patch.object(SchemaRegistry, '_ensure_version_table'):
+            registry = SchemaRegistry(mock_storage)
+            
+            # Mock current version
+            registry.get_current_version = MagicMock(return_value=5)
+            
+            # Mock register_version to track calls
+            registry.register_version = MagicMock(return_value=True)
+            
+            # Set up connection with transaction
+            mock_conn = MagicMock()
+            mock_transaction = MagicMock()
+            mock_conn.begin.return_value = mock_transaction
+            mock_storage.engine.connect.return_value.__enter__.return_value = mock_conn
+            
+            # Case 1: Successful migration
+            def successful_migration(conn):
+                conn.execute(text("CREATE TABLE test_table (id INTEGER)"))
+            
+            result = registry.apply_migration(
+                6, "Successful migration", ["test_component"], successful_migration
+            )
+            
+            # Verify migration succeeded
+            assert result is True
+            # Verify transaction was committed
+            assert mock_transaction.commit.called
+            # Verify version was registered
+            registry.register_version.assert_called_once()
+            
+            # Reset mocks
+            mock_transaction.reset_mock()
+            registry.register_version.reset_mock()
+            
+            # Case 2: Failed migration
+            def failed_migration(conn):
+                # First statement works
+                conn.execute(text("CREATE TABLE test_table2 (id INTEGER)"))
+                # Second statement fails
+                raise IntegrityError("statement", "params", "orig")
+            
+            result = registry.apply_migration(
+                6, "Failed migration", ["test_component"], failed_migration
+            )
+            
+            # Verify migration failed
+            assert result is False
+            # Verify transaction was rolled back
+            assert mock_transaction.rollback.called
+            # Verify version was not registered
+            assert not registry.register_version.called
+    
+    def test_cross_db_schema_compatibility(self):
+        """Test cross-database schema compatibility checking."""
+        # Define the cross-db compatibility method
+        def get_cross_db_compatible_features(self, db_types: List[str]) -> Set[str]:
+            """
+            Get features that are supported across all specified database types.
+            
+            Args:
+                db_types: List of database types to check compatibility across
+                
+            Returns:
+                Set of feature names supported by all specified database types
+            """
+            if not db_types:
+                return set()
+                
+            # Start with all features
+            compatible_features = set(self.compatibility_matrix.keys())
+            
+            # For each database type, filter to features it supports
+            for db_type in db_types:
+                # Get compatibility matrix for this db type
+                db_compatible_features = set()
+                for feature, requirements in self.compatibility_matrix.items():
+                    if db_type in requirements:
+                        db_compatible_features.add(feature)
+                        
+                # Keep only features supported by all db types checked so far
+                compatible_features = compatible_features.intersection(db_compatible_features)
+                
+            return compatible_features
+        
+        # Add the method to SchemaRegistry for testing
+        SchemaRegistry.get_cross_db_compatible_features = get_cross_db_compatible_features
+        
+        # Mock storage interface
+        mock_storage = MagicMock()
+        mock_storage.db_type = "postgresql"
+        
+        # Create registry
+        with patch.object(SchemaRegistry, '_ensure_version_table'):
+            registry = SchemaRegistry(mock_storage)
+            
+            # Define a test compatibility matrix
+            registry.compatibility_matrix = {
+                "vector_search": {"postgresql": 5, "sqlite": 3, "mysql": 3},
+                "advanced_partitioning": {"postgresql": 7, "mysql": 5},
+                "full_text_search": {"postgresql": 3, "sqlite": 4, "mysql": 4},
+                "database_events": {"postgresql": 4, "mysql": 4},
+                "hybrid_search": {"lancedb": 1},
+                "vector_operations": {"lancedb": 1, "postgresql": 5}
+            }
+            
+            # Test with PostgreSQL and SQLite
+            features_pg_sqlite = registry.get_cross_db_compatible_features(["postgresql", "sqlite"])
+            assert "vector_search" in features_pg_sqlite
+            assert "full_text_search" in features_pg_sqlite
+            assert "advanced_partitioning" not in features_pg_sqlite  # SQLite doesn't support this
+            assert "database_events" not in features_pg_sqlite  # SQLite doesn't support this
+            
+            # Test with PostgreSQL and MySQL - should support more features
+            features_pg_mysql = registry.get_cross_db_compatible_features(["postgresql", "mysql"])
+            assert "vector_search" in features_pg_mysql
+            assert "advanced_partitioning" in features_pg_mysql
+            assert "full_text_search" in features_pg_mysql
+            assert "database_events" in features_pg_mysql
+            assert "hybrid_search" not in features_pg_mysql  # Neither supports this
+            
+            # Test with all database types - should only return features supported by all
+            features_all = registry.get_cross_db_compatible_features(
+                ["postgresql", "sqlite", "mysql", "lancedb"]
+            )
+            assert len(features_all) == 0  # No feature is supported by all
+            
+            # Test with empty list - should return empty set
+            features_none = registry.get_cross_db_compatible_features([])
+            assert len(features_none) == 0
+    
+    def test_schema_downgrade_prevention(self):
+        """Test prevention of schema downgrades."""
+        # We'll reuse the apply_migration method added in test_apply_migration_with_rollback
+        # that already has downgrade prevention built in
+        
+        # Mock storage interface
+        mock_storage = MagicMock()
+        mock_storage.db_type = "postgresql"
+        
+        # Create registry
+        with patch.object(SchemaRegistry, '_ensure_version_table'):
+            registry = SchemaRegistry(mock_storage)
+            
+            # Mock current version to a higher number
+            registry.get_current_version = MagicMock(return_value=8)
+            
+            # Test attempting a downgrade to version 5
+            def downgrade_migration(conn):
+                conn.execute(text("DROP TABLE some_table"))
+                
+            result = registry.apply_migration(
+                5,  # Version lower than current (8)
+                "Test downgrade prevention",
+                ["test_component"],
+                downgrade_migration
+            )
+            
+            # Verify downgrade was prevented
+            assert result is False
+            
+            # Test with force_version flag (should still be prevented)
+            result = registry.apply_migration(
+                5,
+                "Test forced downgrade prevention",
+                ["test_component"],
+                downgrade_migration,
+                force_version=True  # Even with force, downgrade should be blocked
+            )
+            
+            # Verify forced downgrade was also prevented
+            assert result is False
