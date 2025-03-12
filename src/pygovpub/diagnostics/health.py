@@ -31,6 +31,7 @@ from pygovpub.exceptions import (
     NetworkError,
     PyGovPubException
 )
+from pygovpub.recovery import CircuitBreakerRegistry
 
 
 async def check_api_connectivity() -> List[Dict[str, Any]]:
@@ -238,13 +239,18 @@ async def check_performance() -> Dict[str, Any]:
     return result
 
 
-def get_status_summary(api_results: List[Dict[str, Any]], config_results: Dict[str, Any]) -> str:
+def get_status_summary(
+    api_results: List[Dict[str, Any]], 
+    config_results: Dict[str, Any],
+    circuit_breaker_results: Optional[Dict[str, Any]] = None
+) -> str:
     """
     Determine overall health status from component checks.
 
     Args:
         api_results: Results from API connectivity checks
         config_results: Results from configuration checks
+        circuit_breaker_results: Results from circuit breaker checks
 
     Returns:
         Status string: "healthy", "degraded", "unhealthy", or "critical"
@@ -266,12 +272,32 @@ def get_status_summary(api_results: List[Dict[str, Any]], config_results: Dict[s
             statuses[status] += 1
     
     # All APIs are in error state: critical
-    if statuses["error"] == len(api_results):
+    if statuses["error"] == len(api_results) and len(api_results) > 0:
         return "critical"
     
     # At least one API has an error: unhealthy
     if statuses["error"] > 0:
         return "unhealthy"
+    
+    # Check circuit breaker status if available
+    if circuit_breaker_results:
+        # If any circuit is open, consider the system at least degraded
+        open_circuits = circuit_breaker_results.get("state_counts", {}).get("open", 0)
+        half_open_circuits = circuit_breaker_results.get("state_counts", {}).get("half_open", 0)
+        
+        # If more than 50% of circuits are open, consider the system unhealthy
+        total_circuits = circuit_breaker_results.get("total_circuits", 0)
+        if total_circuits > 0 and open_circuits > 0:
+            open_percentage = (open_circuits / total_circuits) * 100
+            if open_percentage >= 50:
+                return "unhealthy"
+            else:
+                # At least one circuit is open, consider the system degraded
+                return "degraded"
+        
+        # If any circuit is half-open, consider the system at least degraded
+        if half_open_circuits > 0:
+            return "degraded"
     
     # At least one API is rate limited: degraded
     if statuses["rate_limited"] > 0:
@@ -279,6 +305,46 @@ def get_status_summary(api_results: List[Dict[str, Any]], config_results: Dict[s
     
     # Everything is working correctly
     return "healthy"
+
+
+def check_circuit_breakers() -> Dict[str, Any]:
+    """
+    Check the status of all circuit breakers in the system.
+    
+    Returns:
+        Dictionary with circuit breaker status information
+    """
+    # Get the circuit breaker registry
+    registry = CircuitBreakerRegistry()
+    
+    # Get status of all circuit breakers
+    circuit_breakers = registry.get_all_statuses()
+    
+    # Count circuit breakers by state
+    state_counts = {"closed": 0, "open": 0, "half_open": 0}
+    critical_circuits = []
+    
+    for name, status in circuit_breakers.items():
+        state = status.get("state", "unknown")
+        if state in state_counts:
+            state_counts[state] += 1
+        
+        # Track open/half-open circuits as potential issues
+        if state in ("open", "half_open"):
+            critical_circuits.append({
+                "name": name,
+                "state": state,
+                "failure_count": status.get("failure_count", 0),
+                "last_failure": status.get("last_failure"),
+                "reset_time": status.get("reset_time", 0)
+            })
+    
+    return {
+        "total_circuits": len(circuit_breakers),
+        "state_counts": state_counts,
+        "critical_circuits": critical_circuits,
+        "all_circuits": circuit_breakers
+    }
 
 
 def run_health_check() -> Dict[str, Any]:
@@ -304,8 +370,11 @@ def run_health_check() -> Dict[str, Any]:
         # Run performance check
         performance_results = loop.run_until_complete(check_performance())
         
-        # Get overall status
-        status = get_status_summary(api_results, config_results)
+        # Check circuit breakers
+        circuit_breaker_results = check_circuit_breakers()
+        
+        # Get overall status (considering circuit breakers)
+        status = get_status_summary(api_results, config_results, circuit_breaker_results)
         
         # Build results dictionary
         return {
@@ -315,7 +384,8 @@ def run_health_check() -> Dict[str, Any]:
             "apis": api_results,
             "configuration": config_results,
             "system": system_results,
-            "performance": performance_results
+            "performance": performance_results,
+            "circuit_breakers": circuit_breaker_results
         }
     finally:
         # Ensure the event loop is closed
