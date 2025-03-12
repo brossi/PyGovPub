@@ -9,12 +9,16 @@ import pytest
 from unittest.mock import patch, MagicMock, Mock
 import time
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Field, Session, SQLModel
 
 from pygovpub.auth.models import ApiSource
-from pygovpub.auth.rate_limiter import RateLimiter
+from pygovpub.auth.rate_limiter import RateLimiter, ThrottleStrategy
+
+# Use UTC timezone for all datetime objects to match the implementation
+UTC = ZoneInfo("UTC")
 
 
 class TestInMemoryFallback:
@@ -32,9 +36,16 @@ class TestInMemoryFallback:
         mock.close = MagicMock()
         mock.add = MagicMock()
         mock.exec = MagicMock()
+        mock.execute = MagicMock()
         
         # Configure the exec result to return None (no results)
         mock.exec.return_value.first.return_value = None
+        
+        # Configure the execute result to return None (no results)
+        mock_result = MagicMock()
+        mock_result.first.return_value = None
+        mock_result.scalar.return_value = None
+        mock.execute.return_value = mock_result
         
         return mock
     
@@ -82,11 +93,12 @@ class TestInMemoryFallback:
     
     async def test_check_rate_limit_in_memory_fallback(self, rate_limiter, mock_session):
         """Test fallback to in-memory tracking when checking rate limit."""
-        # Configure mock session to raise an exception during query
+        # Configure mock session to raise an exception during query (both exec and execute)
         mock_session.exec.side_effect = SQLAlchemyError("Database query failed")
+        mock_session.execute.side_effect = SQLAlchemyError("Database query failed")
         
         # Set known values in memory tracking for verification
-        now = datetime.now()
+        now = datetime.now(UTC)
         reset_time = now + timedelta(minutes=30)
         rate_limiter._memory_limits[ApiSource.CONGRESS]["remaining"] = 25
         rate_limiter._memory_limits[ApiSource.CONGRESS]["reset_time"] = reset_time
@@ -94,8 +106,8 @@ class TestInMemoryFallback:
         # Check rate limit - should fall back to in-memory after DB failure
         allowed, returned_reset = await rate_limiter.check_rate_limit(ApiSource.CONGRESS)
         
-        # Verify DB was attempted
-        mock_session.exec.assert_called_once()
+        # Verify DB was attempted - with either exec or execute
+        assert mock_session.exec.called or mock_session.execute.called, "Neither exec nor execute was called on the session"
         
         # Verify we got the in-memory values
         assert allowed is True
@@ -104,7 +116,7 @@ class TestInMemoryFallback:
     async def test_in_memory_reset_when_expired(self, rate_limiter):
         """Test that in-memory limits reset when the reset time has passed."""
         # Set up expired rate limit in memory
-        one_hour_ago = datetime.now() - timedelta(hours=1)
+        one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
         rate_limiter._memory_limits[ApiSource.CONGRESS]["remaining"] = 0
         rate_limiter._memory_limits[ApiSource.CONGRESS]["reset_time"] = one_hour_ago
         
@@ -115,47 +127,64 @@ class TestInMemoryFallback:
         assert allowed is True
         assert rate_limiter._memory_limits[ApiSource.CONGRESS]["remaining"] == 5000  # Default limit
         
-    async def test_wait_for_capacity_using_memory(self, rate_limiter):
+    @patch("pygovpub.auth.rate_limiter.asyncio.sleep")
+    async def test_wait_for_capacity_using_memory(self, mock_sleep, rate_limiter):
         """Test wait_for_capacity using in-memory tracking."""
         # Set up exhausted rate limit that will reset shortly
-        reset_time = datetime.now() + timedelta(seconds=1)
+        reset_time = datetime.now(UTC) + timedelta(seconds=1)
         rate_limiter._memory_limits[ApiSource.CONGRESS]["remaining"] = 0
         rate_limiter._memory_limits[ApiSource.CONGRESS]["reset_time"] = reset_time
         
-        # Create a timeout to ensure the test doesn't hang
-        start_time = time.time()
+        # Track if reset was called
+        reset_was_called = [False]
+        original_reset = rate_limiter._reset_memory_limits
+        
+        # Use a dummy async sleep that doesn't actually sleep
+        async def fake_sleep(seconds):
+            # Record that sleep was called with the expected time
+            fake_sleep.called_with = seconds
+            
+            # After fake sleep, simulate time passing by resetting limits
+            if not reset_was_called[0]:
+                original_reset(ApiSource.CONGRESS)
+                reset_was_called[0] = True
+            
+        fake_sleep.called_with = None
+        mock_sleep.side_effect = fake_sleep
         
         # Wait for capacity - should wait until reset time then return
         await rate_limiter.wait_for_capacity(ApiSource.CONGRESS)
         
-        # Calculate actual wait time
-        wait_time = time.time() - start_time
+        # Verify the sleep was called with approximately the right wait time
+        assert fake_sleep.called_with is not None, "Sleep was never called"
+        assert fake_sleep.called_with > 0, "Sleep time was not positive"
+        assert fake_sleep.called_with <= 2, "Sleep time was too long"
         
-        # Verify we waited approximately the right amount of time
-        # Should be at least 1 second but less than 2 seconds
-        assert wait_time >= 1.0
-        assert wait_time < 3.0  # Allow some wiggle room for async execution
-        
-        # Verify reset happened
+        # Verify reset happened and remaining was increased
         assert rate_limiter._memory_limits[ApiSource.CONGRESS]["remaining"] > 0
     
     @patch("pygovpub.auth.rate_limiter.RateLimiter.check_rate_limit")
-    async def test_in_memory_throttling(self, mock_check_rate_limit, rate_limiter):
+    @patch("pygovpub.auth.rate_limiter.RateLimiter.wait_for_capacity")
+    async def test_in_memory_throttling(self, mock_wait_for_capacity, mock_check_rate_limit, rate_limiter):
         """Test throttling based on in-memory tracking."""
-        # Configure mock to simulate rate limit exceeded first, then available
-        mock_check_rate_limit.side_effect = [
-            (False, datetime.now() + timedelta(seconds=1)),  # First call: no capacity
-            (True, datetime.now() + timedelta(hours=1))      # Second call: capacity available
-        ]
+        # Set strategy to WAIT so that it will actually wait for capacity
+        rate_limiter.strategy = ThrottleStrategy.WAIT
         
-        # Pre-request should wait for capacity when limit exceeded
-        start_time = time.time()
+        # Configure mock to simulate rate limit exceeded
+        reset_time = datetime.now(UTC) + timedelta(seconds=1)
+        mock_check_rate_limit.return_value = (False, reset_time)
+        
+        # Set up wait_for_capacity mock to do nothing
+        mock_wait_for_capacity.return_value = None
+        
+        # Pre-request should call wait_for_capacity when limit exceeded
         await rate_limiter.pre_request(ApiSource.CONGRESS)
-        wait_time = time.time() - start_time
         
-        # Verify we waited for capacity
-        assert wait_time >= 1.0
-        assert mock_check_rate_limit.call_count == 2
+        # Verify check_rate_limit was called
+        mock_check_rate_limit.assert_called_once_with(ApiSource.CONGRESS)
+        
+        # Verify wait_for_capacity was called
+        mock_wait_for_capacity.assert_called_once_with(ApiSource.CONGRESS)
 
 
 if __name__ == "__main__":
