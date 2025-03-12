@@ -704,5 +704,714 @@ class StorageInterface:
             logger.error(f"Failed to perform hybrid search with {provider_type}", error=str(e))
             raise
 
-    # Additional CRUD methods with monitoring would be implemented similarly
-    # get(), update(), delete(), query(), and their async equivalents
+    @CONNECTION_CIRCUIT_BREAKER
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True
+    )
+    def get(self, model_class: Type[T], id: Any) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a record by ID with monitoring, retry, and circuit breaking.
+        
+        Args:
+            model_class: Model class to query
+            id: ID of the record to retrieve
+            
+        Returns:
+            Dictionary of attribute values or None if not found
+            
+        Raises:
+            Exception: Database errors during retrieval
+        """
+        # For non-SQL databases, use provider
+        if self.db_type in ["lancedb", "pinecone", "supabase"]:
+            return self.get_with_provider(self.db_type, model_class, id)
+        
+        # SQL database path
+        start_time = time.time()
+        session = self.Session()
+        
+        try:
+            # Track active connections
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).inc()
+            
+            # Query for the record
+            record = session.query(model_class).filter(model_class.id == id).first()
+            
+            # Record operation in metrics
+            if record:
+                DB_OPERATIONS.labels(operation="get", status="success", db_type=self.db_type).inc()
+            else:
+                DB_OPERATIONS.labels(operation="get", status="not_found", db_type=self.db_type).inc()
+                
+            DB_OPERATION_DURATION.labels(operation="get", db_type=self.db_type).observe(time.time() - start_time)
+            
+            if not record:
+                return None
+                
+            # Convert to dictionary and remove SQLAlchemy state
+            result = {k: v for k, v in record.__dict__.items() if not k.startswith('_')}
+            
+            logger.debug("Retrieved record", model=model_class.__name__, id=id)
+            return result
+            
+        except Exception as e:
+            DB_OPERATIONS.labels(operation="get", status="error", db_type=self.db_type).inc()
+            logger.error(
+                "Failed to retrieve record",
+                model=model_class.__name__,
+                id=id,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+        finally:
+            session.close()
+            # Decrement active connection count
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).dec()
+            
+    @CONNECTION_CIRCUIT_BREAKER
+    def get_with_provider(self, provider_type: str, model_class: Type[T], id: Any) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a record by ID using a specific provider.
+        
+        Args:
+            provider_type: Provider type (e.g., "lancedb")
+            model_class: Model class to query
+            id: ID of the record to retrieve
+            
+        Returns:
+            Dictionary of attribute values or None if not found
+            
+        Raises:
+            ValueError: If provider not available
+            Exception: Database errors during retrieval
+        """
+        provider = self._get_provider(provider_type)
+        
+        start_time = time.time()
+        try:
+            # Track operations
+            DB_OPERATIONS.labels(operation=f"get_{provider_type}", status="processing", db_type=provider_type).inc()
+            
+            # Retrieve record using provider
+            result = provider.get(model_class, id)
+            
+            # Record metrics based on result
+            if result:
+                DB_OPERATIONS.labels(operation=f"get_{provider_type}", status="success", db_type=provider_type).inc()
+            else:
+                DB_OPERATIONS.labels(operation=f"get_{provider_type}", status="not_found", db_type=provider_type).inc()
+                
+            DB_OPERATION_DURATION.labels(operation=f"get_{provider_type}", db_type=provider_type).observe(time.time() - start_time)
+            
+            return result
+        except Exception as e:
+            DB_OPERATIONS.labels(operation=f"get_{provider_type}", status="error", db_type=provider_type).inc()
+            logger.error(f"Failed to retrieve record with {provider_type}", model=model_class.__name__, id=id, error=str(e))
+            raise
+            
+    @CONNECTION_CIRCUIT_BREAKER
+    async def get_async(self, model_class: Type[T], id: Any) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a record by ID asynchronously with monitoring and circuit breaking.
+        
+        Args:
+            model_class: Model class to query
+            id: ID of the record to retrieve
+            
+        Returns:
+            Dictionary of attribute values or None if not found
+            
+        Raises:
+            NotImplementedError: If async operations not supported
+            Exception: Database errors during retrieval
+        """
+        if not self._supports_async():
+            raise NotImplementedError(f"Async operations not supported for {self.db_type}")
+            
+        start_time = time.time()
+        async_session = self.AsyncSession()
+        
+        try:
+            # Track active connections
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).inc()
+            
+            # Query for the record asynchronously
+            from sqlalchemy import select
+            query = select(model_class).filter(model_class.id == id)
+            result = await async_session.execute(query)
+            record = result.scalar_one_or_none()
+            
+            # Record operation in metrics
+            if record:
+                DB_OPERATIONS.labels(operation="get_async", status="success", db_type=self.db_type).inc()
+            else:
+                DB_OPERATIONS.labels(operation="get_async", status="not_found", db_type=self.db_type).inc()
+                
+            DB_OPERATION_DURATION.labels(operation="get_async", db_type=self.db_type).observe(time.time() - start_time)
+            
+            if not record:
+                return None
+                
+            # Convert to dictionary and remove SQLAlchemy state
+            result_dict = {k: v for k, v in record.__dict__.items() if not k.startswith('_')}
+            
+            logger.debug("Retrieved record asynchronously", model=model_class.__name__, id=id)
+            return result_dict
+            
+        except Exception as e:
+            DB_OPERATIONS.labels(operation="get_async", status="error", db_type=self.db_type).inc()
+            logger.error(
+                "Failed to retrieve record asynchronously",
+                model=model_class.__name__,
+                id=id,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+        finally:
+            await async_session.close()
+            # Decrement active connection count
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).dec()
+    
+    @CONNECTION_CIRCUIT_BREAKER
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True
+    )
+    def update(self, model_class: Type[T], id: Any, data: Dict[str, Any]) -> bool:
+        """
+        Update an existing record with monitoring, retry, and circuit breaking.
+        
+        Args:
+            model_class: Model class to query
+            id: ID of the record to update
+            data: Dictionary of attribute values to update
+            
+        Returns:
+            True if record was updated, False if record not found
+            
+        Raises:
+            Exception: Database errors during update
+        """
+        # For non-SQL databases, use provider
+        if self.db_type in ["lancedb", "pinecone", "supabase"]:
+            return self.update_with_provider(self.db_type, model_class, id, data)
+        
+        # SQL database path
+        start_time = time.time()
+        session = self.Session()
+        
+        try:
+            # Track active connections
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).inc()
+            
+            # Query for the record
+            record = session.query(model_class).filter(model_class.id == id).first()
+            
+            if not record:
+                DB_OPERATIONS.labels(operation="update", status="not_found", db_type=self.db_type).inc()
+                DB_OPERATION_DURATION.labels(operation="update", db_type=self.db_type).observe(time.time() - start_time)
+                return False
+                
+            # Update record attributes
+            for key, value in data.items():
+                setattr(record, key, value)
+                
+            # Commit changes
+            session.commit()
+            
+            DB_OPERATIONS.labels(operation="update", status="success", db_type=self.db_type).inc()
+            DB_OPERATION_DURATION.labels(operation="update", db_type=self.db_type).observe(time.time() - start_time)
+            
+            logger.debug("Updated record", model=model_class.__name__, id=id)
+            return True
+            
+        except Exception as e:
+            session.rollback()
+            DB_OPERATIONS.labels(operation="update", status="error", db_type=self.db_type).inc()
+            logger.error(
+                "Failed to update record",
+                model=model_class.__name__,
+                id=id,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+        finally:
+            session.close()
+            # Decrement active connection count
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).dec()
+            
+    @CONNECTION_CIRCUIT_BREAKER
+    def update_with_provider(self, provider_type: str, model_class: Type[T], id: Any, data: Dict[str, Any]) -> bool:
+        """
+        Update a record using a specific provider.
+        
+        Args:
+            provider_type: Provider type (e.g., "lancedb")
+            model_class: Model class to query
+            id: ID of the record to update
+            data: Dictionary of attribute values to update
+            
+        Returns:
+            True if record was updated, False if record not found
+            
+        Raises:
+            ValueError: If provider not available
+            Exception: Database errors during update
+        """
+        provider = self._get_provider(provider_type)
+        
+        start_time = time.time()
+        try:
+            # Track operations
+            DB_OPERATIONS.labels(operation=f"update_{provider_type}", status="processing", db_type=provider_type).inc()
+            
+            # Update record using provider
+            result = provider.update(model_class, id, data)
+            
+            # Record metrics based on result
+            if result:
+                DB_OPERATIONS.labels(operation=f"update_{provider_type}", status="success", db_type=provider_type).inc()
+            else:
+                DB_OPERATIONS.labels(operation=f"update_{provider_type}", status="not_found", db_type=provider_type).inc()
+                
+            DB_OPERATION_DURATION.labels(operation=f"update_{provider_type}", db_type=provider_type).observe(time.time() - start_time)
+            
+            return result
+        except Exception as e:
+            DB_OPERATIONS.labels(operation=f"update_{provider_type}", status="error", db_type=provider_type).inc()
+            logger.error(f"Failed to update record with {provider_type}", model=model_class.__name__, id=id, error=str(e))
+            raise
+            
+    @CONNECTION_CIRCUIT_BREAKER
+    async def update_async(self, model_class: Type[T], id: Any, data: Dict[str, Any]) -> bool:
+        """
+        Update an existing record asynchronously with monitoring and circuit breaking.
+        
+        Args:
+            model_class: Model class to query
+            id: ID of the record to update
+            data: Dictionary of attribute values to update
+            
+        Returns:
+            True if record was updated, False if record not found
+            
+        Raises:
+            NotImplementedError: If async operations not supported
+            Exception: Database errors during update
+        """
+        if not self._supports_async():
+            raise NotImplementedError(f"Async operations not supported for {self.db_type}")
+            
+        start_time = time.time()
+        async_session = self.AsyncSession()
+        
+        try:
+            # Track active connections
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).inc()
+            
+            # Query for the record asynchronously
+            from sqlalchemy import select
+            query = select(model_class).filter(model_class.id == id)
+            result = await async_session.execute(query)
+            record = result.scalar_one_or_none()
+            
+            if not record:
+                DB_OPERATIONS.labels(operation="update_async", status="not_found", db_type=self.db_type).inc()
+                DB_OPERATION_DURATION.labels(operation="update_async", db_type=self.db_type).observe(time.time() - start_time)
+                return False
+                
+            # Update record attributes
+            for key, value in data.items():
+                setattr(record, key, value)
+                
+            # Commit changes
+            await async_session.commit()
+            
+            DB_OPERATIONS.labels(operation="update_async", status="success", db_type=self.db_type).inc()
+            DB_OPERATION_DURATION.labels(operation="update_async", db_type=self.db_type).observe(time.time() - start_time)
+            
+            logger.debug("Updated record asynchronously", model=model_class.__name__, id=id)
+            return True
+            
+        except Exception as e:
+            await async_session.rollback()
+            DB_OPERATIONS.labels(operation="update_async", status="error", db_type=self.db_type).inc()
+            logger.error(
+                "Failed to update record asynchronously",
+                model=model_class.__name__,
+                id=id,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+        finally:
+            await async_session.close()
+            # Decrement active connection count
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).dec()
+    
+    @CONNECTION_CIRCUIT_BREAKER
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True
+    )
+    def delete(self, model_class: Type[T], id: Any) -> bool:
+        """
+        Delete a record with monitoring, retry, and circuit breaking.
+        
+        Args:
+            model_class: Model class to query
+            id: ID of the record to delete
+            
+        Returns:
+            True if record was deleted, False if record not found
+            
+        Raises:
+            Exception: Database errors during deletion
+        """
+        # For non-SQL databases, use provider
+        if self.db_type in ["lancedb", "pinecone", "supabase"]:
+            return self.delete_with_provider(self.db_type, model_class, id)
+        
+        # SQL database path
+        start_time = time.time()
+        session = self.Session()
+        
+        try:
+            # Track active connections
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).inc()
+            
+            # Query for the record
+            record = session.query(model_class).filter(model_class.id == id).first()
+            
+            if not record:
+                DB_OPERATIONS.labels(operation="delete", status="not_found", db_type=self.db_type).inc()
+                DB_OPERATION_DURATION.labels(operation="delete", db_type=self.db_type).observe(time.time() - start_time)
+                return False
+                
+            # Delete the record
+            session.delete(record)
+            session.commit()
+            
+            DB_OPERATIONS.labels(operation="delete", status="success", db_type=self.db_type).inc()
+            DB_OPERATION_DURATION.labels(operation="delete", db_type=self.db_type).observe(time.time() - start_time)
+            
+            logger.debug("Deleted record", model=model_class.__name__, id=id)
+            return True
+            
+        except Exception as e:
+            session.rollback()
+            DB_OPERATIONS.labels(operation="delete", status="error", db_type=self.db_type).inc()
+            logger.error(
+                "Failed to delete record",
+                model=model_class.__name__,
+                id=id,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+        finally:
+            session.close()
+            # Decrement active connection count
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).dec()
+            
+    @CONNECTION_CIRCUIT_BREAKER
+    def delete_with_provider(self, provider_type: str, model_class: Type[T], id: Any) -> bool:
+        """
+        Delete a record using a specific provider.
+        
+        Args:
+            provider_type: Provider type (e.g., "lancedb")
+            model_class: Model class to query
+            id: ID of the record to delete
+            
+        Returns:
+            True if record was deleted, False if record not found
+            
+        Raises:
+            ValueError: If provider not available
+            Exception: Database errors during deletion
+        """
+        provider = self._get_provider(provider_type)
+        
+        start_time = time.time()
+        try:
+            # Track operations
+            DB_OPERATIONS.labels(operation=f"delete_{provider_type}", status="processing", db_type=provider_type).inc()
+            
+            # Delete record using provider
+            result = provider.delete(model_class, id)
+            
+            # Record metrics based on result
+            if result:
+                DB_OPERATIONS.labels(operation=f"delete_{provider_type}", status="success", db_type=provider_type).inc()
+            else:
+                DB_OPERATIONS.labels(operation=f"delete_{provider_type}", status="not_found", db_type=provider_type).inc()
+                
+            DB_OPERATION_DURATION.labels(operation=f"delete_{provider_type}", db_type=provider_type).observe(time.time() - start_time)
+            
+            return result
+        except Exception as e:
+            DB_OPERATIONS.labels(operation=f"delete_{provider_type}", status="error", db_type=provider_type).inc()
+            logger.error(f"Failed to delete record with {provider_type}", model=model_class.__name__, id=id, error=str(e))
+            raise
+            
+    @CONNECTION_CIRCUIT_BREAKER
+    async def delete_async(self, model_class: Type[T], id: Any) -> bool:
+        """
+        Delete a record asynchronously with monitoring and circuit breaking.
+        
+        Args:
+            model_class: Model class to query
+            id: ID of the record to delete
+            
+        Returns:
+            True if record was deleted, False if record not found
+            
+        Raises:
+            NotImplementedError: If async operations not supported
+            Exception: Database errors during deletion
+        """
+        if not self._supports_async():
+            raise NotImplementedError(f"Async operations not supported for {self.db_type}")
+            
+        start_time = time.time()
+        async_session = self.AsyncSession()
+        
+        try:
+            # Track active connections
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).inc()
+            
+            # Query for the record asynchronously
+            from sqlalchemy import select
+            query = select(model_class).filter(model_class.id == id)
+            result = await async_session.execute(query)
+            record = result.scalar_one_or_none()
+            
+            if not record:
+                DB_OPERATIONS.labels(operation="delete_async", status="not_found", db_type=self.db_type).inc()
+                DB_OPERATION_DURATION.labels(operation="delete_async", db_type=self.db_type).observe(time.time() - start_time)
+                return False
+                
+            # Delete the record
+            await async_session.delete(record)
+            await async_session.commit()
+            
+            DB_OPERATIONS.labels(operation="delete_async", status="success", db_type=self.db_type).inc()
+            DB_OPERATION_DURATION.labels(operation="delete_async", db_type=self.db_type).observe(time.time() - start_time)
+            
+            logger.debug("Deleted record asynchronously", model=model_class.__name__, id=id)
+            return True
+            
+        except Exception as e:
+            await async_session.rollback()
+            DB_OPERATIONS.labels(operation="delete_async", status="error", db_type=self.db_type).inc()
+            logger.error(
+                "Failed to delete record asynchronously",
+                model=model_class.__name__,
+                id=id,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+        finally:
+            await async_session.close()
+            # Decrement active connection count
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).dec()
+    
+    @CONNECTION_CIRCUIT_BREAKER
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True
+    )
+    def query(self, model_class: Type[T], filter_criteria: Dict[str, Any], limit: Optional[int] = None, offset: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Query records with filters and pagination with monitoring, retry, and circuit breaking.
+        
+        Args:
+            model_class: Model class to query
+            filter_criteria: Dictionary of attribute-value pairs to filter on
+            limit: Maximum number of records to return
+            offset: Number of records to skip
+            
+        Returns:
+            List of dictionaries containing attribute values
+            
+        Raises:
+            Exception: Database errors during query
+        """
+        # For non-SQL databases, use provider
+        if self.db_type in ["lancedb", "pinecone", "supabase"]:
+            return self.query_with_provider(self.db_type, model_class, filter_criteria, limit, offset)
+        
+        # SQL database path
+        start_time = time.time()
+        session = self.Session()
+        
+        try:
+            # Track active connections
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).inc()
+            
+            # Start query
+            query = session.query(model_class)
+            
+            # Apply filters
+            for attr, value in filter_criteria.items():
+                query = query.filter(getattr(model_class, attr) == value)
+                
+            # Apply pagination
+            if offset is not None:
+                query = query.offset(offset)
+            if limit is not None:
+                query = query.limit(limit)
+                
+            # Execute query
+            records = query.all()
+            
+            # Convert to list of dictionaries
+            results = []
+            for record in records:
+                # Convert to dictionary and remove SQLAlchemy state
+                result = {k: v for k, v in record.__dict__.items() if not k.startswith('_')}
+                results.append(result)
+                
+            DB_OPERATIONS.labels(operation="query", status="success", db_type=self.db_type).inc()
+            DB_OPERATION_DURATION.labels(operation="query", db_type=self.db_type).observe(time.time() - start_time)
+            
+            logger.debug("Queried records", model=model_class.__name__, count=len(results))
+            return results
+            
+        except Exception as e:
+            DB_OPERATIONS.labels(operation="query", status="error", db_type=self.db_type).inc()
+            logger.error(
+                "Failed to query records",
+                model=model_class.__name__,
+                filters=str(filter_criteria),
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+        finally:
+            session.close()
+            # Decrement active connection count
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).dec()
+            
+    @CONNECTION_CIRCUIT_BREAKER
+    def query_with_provider(self, provider_type: str, model_class: Type[T], filter_criteria: Dict[str, Any], limit: Optional[int] = None, offset: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Query records using a specific provider.
+        
+        Args:
+            provider_type: Provider type (e.g., "lancedb")
+            model_class: Model class to query
+            filter_criteria: Dictionary of attribute-value pairs to filter on
+            limit: Maximum number of records to return
+            offset: Number of records to skip
+            
+        Returns:
+            List of dictionaries containing attribute values
+            
+        Raises:
+            ValueError: If provider not available
+            Exception: Database errors during query
+        """
+        provider = self._get_provider(provider_type)
+        
+        start_time = time.time()
+        try:
+            # Track operations
+            DB_OPERATIONS.labels(operation=f"query_{provider_type}", status="processing", db_type=provider_type).inc()
+            
+            # Query records using provider
+            results = provider.query(model_class, filter_criteria, limit=limit, offset=offset)
+            
+            DB_OPERATIONS.labels(operation=f"query_{provider_type}", status="success", db_type=provider_type).inc()
+            DB_OPERATION_DURATION.labels(operation=f"query_{provider_type}", db_type=provider_type).observe(time.time() - start_time)
+            
+            return results
+        except Exception as e:
+            DB_OPERATIONS.labels(operation=f"query_{provider_type}", status="error", db_type=provider_type).inc()
+            logger.error(f"Failed to query records with {provider_type}", model=model_class.__name__, filters=str(filter_criteria), error=str(e))
+            raise
+            
+    @CONNECTION_CIRCUIT_BREAKER
+    async def query_async(self, model_class: Type[T], filter_criteria: Dict[str, Any], limit: Optional[int] = None, offset: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Query records asynchronously with monitoring and circuit breaking.
+        
+        Args:
+            model_class: Model class to query
+            filter_criteria: Dictionary of attribute-value pairs to filter on
+            limit: Maximum number of records to return
+            offset: Number of records to skip
+            
+        Returns:
+            List of dictionaries containing attribute values
+            
+        Raises:
+            NotImplementedError: If async operations not supported
+            Exception: Database errors during query
+        """
+        if not self._supports_async():
+            raise NotImplementedError(f"Async operations not supported for {self.db_type}")
+            
+        start_time = time.time()
+        async_session = self.AsyncSession()
+        
+        try:
+            # Track active connections
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).inc()
+            
+            # Build query asynchronously
+            from sqlalchemy import select
+            query = select(model_class)
+            
+            # Apply filters
+            for attr, value in filter_criteria.items():
+                query = query.filter(getattr(model_class, attr) == value)
+                
+            # Apply pagination
+            if offset is not None:
+                query = query.offset(offset)
+            if limit is not None:
+                query = query.limit(limit)
+                
+            # Execute query
+            result = await async_session.execute(query)
+            records = result.all()
+            
+            # Convert to list of dictionaries
+            results = []
+            for record_tuple in records:
+                record = record_tuple[0] if isinstance(record_tuple, tuple) else record_tuple
+                # Convert to dictionary and remove SQLAlchemy state
+                result_dict = {k: v for k, v in record.__dict__.items() if not k.startswith('_')}
+                results.append(result_dict)
+                
+            DB_OPERATIONS.labels(operation="query_async", status="success", db_type=self.db_type).inc()
+            DB_OPERATION_DURATION.labels(operation="query_async", db_type=self.db_type).observe(time.time() - start_time)
+            
+            logger.debug("Queried records asynchronously", model=model_class.__name__, count=len(results))
+            return results
+            
+        except Exception as e:
+            DB_OPERATIONS.labels(operation="query_async", status="error", db_type=self.db_type).inc()
+            logger.error(
+                "Failed to query records asynchronously",
+                model=model_class.__name__,
+                filters=str(filter_criteria),
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            raise
+        finally:
+            await async_session.close()
+            # Decrement active connection count
+            DB_CONNECTIONS_ACTIVE.labels(db_type=self.db_type).dec()
