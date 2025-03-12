@@ -20,6 +20,7 @@
 [i] - Implement: Align with <mcsymbol name="ContentHash" filename="database-schema.md"></mcsymbol> indexing requirements
 [*] - Test: Verify ANN search consistency
 [*] - Test: Verify hybrid search fallbacks
+[*] - Implement: Hybrid search fallbacks for resilience
 [ ] - Test: Verify index rebuild automation
 [*] - Test: Verify search performance metrics
 [*] - Implement: Vector search service

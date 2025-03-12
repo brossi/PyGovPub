@@ -717,6 +717,105 @@ class LanceDBProvider:
             logger.error(f"Error performing hybrid search in {table_name}", error=str(e))
             raise
             
+    def text_search(self,
+                   model_class: Type[T],
+                   query_text: str,
+                   limit: int = 10,
+                   filter_criteria: Optional[Dict[str, Any]] = None,
+                   analyze_query: bool = True) -> List[Dict[str, Any]]:
+        """
+        Perform text-only search. This is used as a fallback when vector search is not available
+        or fails.
+        
+        Args:
+            model_class: Model class
+            query_text: Text query
+            limit: Maximum number of results
+            filter_criteria: Optional filtering criteria
+            analyze_query: Whether to analyze and optimize the query
+            
+        Returns:
+            List of matching records
+        """
+        start_time = time.time()
+
+        # Get table name from model class
+        if hasattr(model_class, "__tablename__"):
+            table_name = model_class.__tablename__
+        else:
+            table_name = model_class.__name__.lower()
+
+        try:
+            # Get table
+            table = self._get_or_create_table(table_name)
+
+            # Define the search execution function
+            def execute_search():
+                # Start text query
+                search = table.search(query_text=query_text)
+
+                # Apply filters if provided
+                if filter_criteria:
+                    filter_expr = " AND ".join([
+                        f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
+                        for key, value in filter_criteria.items()
+                    ])
+                    search = search.where(filter_expr)
+
+                # Execute search
+                result = search.limit(limit).to_pandas()
+
+                # Process results
+                records = []
+                for _, row in result.iterrows():
+                    record = row.to_dict()
+
+                    # Parse metadata from JSON
+                    if "metadata" in record and isinstance(record["metadata"], str):
+                        try:
+                            record["metadata"] = json.loads(record["metadata"])
+                        except json.JSONDecodeError:
+                            logger.warning(f"Could not parse metadata JSON")
+                    
+                    # Process text relevance score
+                    if "_relevance" in record:
+                        # LanceDB text relevance is already normalized (higher is better)
+                        record["score"] = float(record["_relevance"])
+                        del record["_relevance"]
+                    else:
+                        # Default score if not provided
+                        record["score"] = 0.5
+
+                    records.append(record)
+                
+                return records
+
+            # Execute search
+            records = execute_search()
+
+            LANCEDB_OPERATIONS.labels(
+                operation="text_search",
+                status="success",
+                table=table_name
+            ).inc()
+
+            LANCEDB_OPERATION_DURATION.labels(
+                operation="text_search",
+                table=table_name
+            ).observe(time.time() - start_time)
+
+            return records
+
+        except Exception as e:
+            LANCEDB_OPERATIONS.labels(
+                operation="text_search",
+                status="error",
+                table=table_name
+            ).inc()
+
+            logger.error(f"Error performing text search in {table_name}", error=str(e))
+            raise
+            
     def apply_schema_version(self, table_name: str, version: str) -> bool:
         """
         Apply a schema version from the registry to a table.

@@ -92,6 +92,7 @@ For detailed documentation, see:
 - [Authentication](docs/authentication.md)
 - [Data Models](docs/data_models.md)
 - [Performance Testing Guide](docs/performance/README.md)
+- [Search Fallback System](docs/search_fallback.md)
 
 ## Performance Testing
 

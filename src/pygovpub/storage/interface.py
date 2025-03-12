@@ -26,6 +26,10 @@ from pygovpub.storage.query_plan import (
     VectorSearchPlan,
     HybridSearchPlan
 )
+from pygovpub.storage.search_fallback import (
+    FallbackConfig,
+    apply_fallback_strategy
+)
 
 # Set up structured logging
 logger = structlog.get_logger()
@@ -628,9 +632,12 @@ class StorageInterface:
                                    query_vector: List[float], 
                                    limit: int = 10, 
                                    filter_criteria: Optional[Dict[str, Any]] = None,
-                                   analyze_query: bool = True) -> List[Dict[str, Any]]:
+                                   analyze_query: bool = True,
+                                   query_text: Optional[str] = None,
+                                   enable_fallback: bool = True,
+                                   fallback_config: Optional[FallbackConfig] = None) -> List[Dict[str, Any]]:
         """
-        Perform vector search using a specific provider.
+        Perform vector search using a specific provider with fallback capabilities.
         
         Args:
             provider_type: Provider type (e.g., "lancedb")
@@ -639,6 +646,9 @@ class StorageInterface:
             limit: Maximum number of results to return
             filter_criteria: Optional filtering criteria
             analyze_query: Whether to analyze and optimize the query
+            query_text: Optional text query for fallback to hybrid/text search
+            enable_fallback: Whether to enable search fallbacks
+            fallback_config: Optional configuration for fallback behavior
             
         Returns:
             List of matching records
@@ -654,7 +664,46 @@ class StorageInterface:
             # Track operations
             DB_OPERATIONS.labels(operation=f"vector_search_{provider_type}", status="processing", db_type=provider_type).inc()
             
-            # Perform search using provider with query analysis
+            # If fallback is enabled and we have query text, use fallback strategy
+            if enable_fallback and query_text is not None:
+                results, fallback_info = apply_fallback_strategy(
+                    provider=provider,
+                    model_class=model_class,
+                    query_text=query_text,
+                    query_vector=query_vector,
+                    limit=limit,
+                    filter_criteria=filter_criteria,
+                    config=fallback_config
+                )
+                
+                # Log fallback information
+                logger.debug(
+                    f"Search fallback applied",
+                    provider=provider_type,
+                    strategy=fallback_info.get("strategy"),
+                    reason=fallback_info.get("reason"),
+                    execution_time_ms=fallback_info.get("execution_time_ms")
+                )
+                
+                # Track operation status
+                operation_status = "success"
+                if fallback_info.get("strategy") == "error":
+                    operation_status = "error"
+                
+                DB_OPERATIONS.labels(
+                    operation=f"vector_search_with_fallback_{provider_type}", 
+                    status=operation_status, 
+                    db_type=provider_type
+                ).inc()
+                
+                DB_OPERATION_DURATION.labels(
+                    operation=f"vector_search_with_fallback_{provider_type}", 
+                    db_type=provider_type
+                ).observe(time.time() - start_time)
+                
+                return results
+            
+            # Standard vector search without fallback
             results = provider.vector_search(
                 model_class, 
                 query_vector, 
@@ -670,6 +719,11 @@ class StorageInterface:
         except Exception as e:
             DB_OPERATIONS.labels(operation=f"vector_search_{provider_type}", status="error", db_type=provider_type).inc()
             logger.error(f"Failed to perform vector search with {provider_type}", error=str(e))
+            
+            # If fallback is enabled but we don't have query text, we can't fall back
+            if enable_fallback and query_text is None:
+                logger.warning("Search fallback requested but no query_text provided")
+                
             raise
             
     def get_vector_search_plan(self,
@@ -720,9 +774,11 @@ class StorageInterface:
                                    query_vector: List[float] = None, 
                                    limit: int = 10, 
                                    filter_criteria: Optional[Dict[str, Any]] = None,
-                                   analyze_query: bool = True) -> List[Dict[str, Any]]:
+                                   analyze_query: bool = True,
+                                   enable_fallback: bool = True,
+                                   fallback_config: Optional[FallbackConfig] = None) -> List[Dict[str, Any]]:
         """
-        Perform hybrid search (vector + text) using a specific provider.
+        Perform hybrid search (vector + text) using a specific provider with fallback capabilities.
         
         Args:
             provider_type: Provider type (e.g., "lancedb")
@@ -732,6 +788,8 @@ class StorageInterface:
             limit: Maximum number of results to return
             filter_criteria: Optional filtering criteria
             analyze_query: Whether to analyze and optimize the query
+            enable_fallback: Whether to enable search fallbacks
+            fallback_config: Optional configuration for fallback behavior
             
         Returns:
             List of matching records
@@ -750,7 +808,46 @@ class StorageInterface:
             # Track operations
             DB_OPERATIONS.labels(operation=f"hybrid_search_{provider_type}", status="processing", db_type=provider_type).inc()
             
-            # Perform hybrid search using provider with query analysis
+            # If fallback is enabled, use fallback strategy
+            if enable_fallback:
+                results, fallback_info = apply_fallback_strategy(
+                    provider=provider,
+                    model_class=model_class,
+                    query_text=query_text,
+                    query_vector=query_vector,
+                    limit=limit,
+                    filter_criteria=filter_criteria,
+                    config=fallback_config
+                )
+                
+                # Log fallback information
+                logger.debug(
+                    f"Search fallback applied",
+                    provider=provider_type,
+                    strategy=fallback_info.get("strategy"),
+                    reason=fallback_info.get("reason"),
+                    execution_time_ms=fallback_info.get("execution_time_ms")
+                )
+                
+                # Track operation status
+                operation_status = "success"
+                if fallback_info.get("strategy") == "error":
+                    operation_status = "error"
+                
+                DB_OPERATIONS.labels(
+                    operation=f"hybrid_search_with_fallback_{provider_type}", 
+                    status=operation_status, 
+                    db_type=provider_type
+                ).inc()
+                
+                DB_OPERATION_DURATION.labels(
+                    operation=f"hybrid_search_with_fallback_{provider_type}", 
+                    db_type=provider_type
+                ).observe(time.time() - start_time)
+                
+                return results
+            
+            # Standard hybrid search without fallback
             results = provider.hybrid_search(
                 model_class, 
                 query_text, 
