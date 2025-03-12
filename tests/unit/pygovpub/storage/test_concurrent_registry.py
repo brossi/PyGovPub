@@ -59,6 +59,9 @@ class TestConcurrentSchemaRegistry:
         # Add a registry of registered versions to simulate concurrent access
         storage.registered_versions = []
         
+        # Add a lock to simulate database constraints in a thread-safe way
+        storage.version_lock = threading.Lock()
+        
         return storage
 
     @pytest.fixture
@@ -76,34 +79,41 @@ class TestConcurrentSchemaRegistry:
             
             # Set up register_version to simulate concurrent behavior
             def mock_register_version(version, description, api_version="1.0.0", **kwargs):
-                # Check if version already registered (simulating DB constraint)
-                if version in mock_storage_interface.registered_versions:
-                    raise IntegrityError("Duplicate version", 
-                                         params={}, 
-                                         orig=Exception("Unique constraint violation"))
-                
-                # Add small delay to increase chance of race conditions
-                time.sleep(0.01)
-                
-                # Add version to registry
-                mock_storage_interface.registered_versions.append(version)
-                return True
+                # Use a lock to simulate database constraints in a thread-safe way
+                with mock_storage_interface.version_lock:
+                    # Check if version already registered (simulating DB constraint)
+                    if version in mock_storage_interface.registered_versions:
+                        raise IntegrityError("Duplicate version", 
+                                            params={}, 
+                                            orig=Exception("Unique constraint violation"))
+                    
+                    # Add small delay to increase chance of race conditions
+                    time.sleep(0.01)
+                    
+                    # Add version to registry
+                    mock_storage_interface.registered_versions.append(version)
+                    return True
             
             # Set up apply_migration to simulate transaction behavior
             def mock_apply_migration(version, description, up_sql, down_sql=None, register=True, 
                                      api_version=None, force=False):
-                # Simulate the transaction behavior
-                if version in mock_storage_interface.registered_versions:
-                    return False
-                
-                # Simulate SQL error for specific test case
-                if "error" in up_sql.lower():
-                    raise Exception("SQL execution error")
-                
-                # Successful migration
-                if register:
-                    mock_storage_interface.registered_versions.append(version)
-                return True
+                # Use a lock to simulate database transaction isolation
+                with mock_storage_interface.version_lock:
+                    # Simulate the transaction behavior
+                    if version in mock_storage_interface.registered_versions:
+                        return False
+                    
+                    # Simulate SQL error for specific test case
+                    if "error" in up_sql.lower():
+                        raise Exception("SQL execution error")
+                    
+                    # Add small delay to simulate processing time and increase chance of race conditions
+                    time.sleep(0.02)
+                    
+                    # Successful migration
+                    if register:
+                        mock_storage_interface.registered_versions.append(version)
+                    return True
             
             # Replace the real methods with our mock implementations
             registry.register_version = mock_register_version
@@ -201,8 +211,11 @@ class TestConcurrentSchemaRegistry:
         # Thread function for continuous history checks
         def check_version_history():
             while not done_event.is_set():
-                # Get current registered versions from our mock storage
-                version_history_results.append(list(mock_storage_interface.registered_versions))
+                # Get current registered versions from our mock storage with thread safety
+                with mock_storage_interface.version_lock:
+                    current_versions = list(mock_storage_interface.registered_versions)
+                
+                version_history_results.append(current_versions)
                 time.sleep(0.01)  # Small delay to avoid CPU spinning
         
         # Thread function for registering versions
