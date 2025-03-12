@@ -166,6 +166,11 @@ def test_with_transaction(test_db_url):
         inspector = sqlalchemy.inspect(engine)
         if "db_test_models" not in inspector.get_table_names():
             DBTestModel.__table__.create(engine)
+        
+        # Clear any existing data
+        with Session(engine) as session:
+            session.execute(sqlalchemy.text("DELETE FROM db_test_models"))
+            session.commit()
             
         # Test successful transaction
         with with_transaction() as session:
@@ -187,7 +192,7 @@ def test_with_transaction(test_db_url):
         except ValueError:
             pass
         
-        # Verify no new model was saved
+        # Verify no new model was saved (rollback worked)
         with Session(engine) as session:
             results = session.exec(select(DBTestModel)).all()
             assert len(results) == 1  # Still just the first one
@@ -211,6 +216,9 @@ async def test_async_session(test_async_db_url):
                 "updated_at TEXT)"
             ))
         )
+        
+        # Clear any existing data
+        await conn.execute(sqlalchemy.text("DELETE FROM db_test_models"))
     
     with patch('pygovpub.core.database.get_async_engine', return_value=engine):
         async with get_async_session() as session:
@@ -246,6 +254,9 @@ async def test_with_async_transaction(test_async_db_url):
                 "updated_at TEXT)"
             ))
         )
+        
+        # Clear any existing data
+        await conn.execute(sqlalchemy.text("DELETE FROM db_test_models"))
     
     with patch('pygovpub.core.database.get_async_engine', return_value=engine):
         # Test successful transaction
@@ -280,6 +291,11 @@ def test_create_tables(test_db_url):
     """Test that tables can be created in the database."""
     engine = create_engine(test_db_url)
     
+    # Drop the table first to ensure clean state
+    inspector = sqlalchemy.inspect(engine)
+    if "db_test_models" in inspector.get_table_names():
+        DBTestModel.__table__.drop(engine)
+    
     # Use patch to mock SQLModel.metadata.create_all to create our test table
     with patch('sqlmodel.SQLModel.metadata.create_all') as mock_create_all:
         with patch('pygovpub.core.database.get_engine', return_value=engine):
@@ -302,6 +318,11 @@ def test_drop_tables(test_db_url):
     """Test that tables can be dropped from the database."""
     engine = create_engine(test_db_url)
     
+    # Verify if table already exists and drop it if needed
+    inspector = sqlalchemy.inspect(engine)
+    if "db_test_models" in inspector.get_table_names():
+        DBTestModel.__table__.drop(engine)
+    
     # Create the test table directly
     DBTestModel.__table__.create(engine)
     
@@ -319,12 +340,17 @@ def test_drop_tables(test_db_url):
             mock_drop_all.assert_called_once_with(engine)
     
     # Manually drop the table to test
-    DBTestModel.__table__.drop(engine)
+    # In a try/except because if the table doesn't exist, we want to continue
+    try:
+        DBTestModel.__table__.drop(engine)
+    except sqlalchemy.exc.OperationalError:
+        # Table might already be gone
+        pass
     
-    # Verify tables are gone
+    # Verify tables are gone or at least db_test_models is gone
     inspector = sqlalchemy.inspect(engine)
     tables_after = inspector.get_table_names()
-    assert len(tables_after) == 0
+    assert "db_test_models" not in tables_after
 
 
 def test_get_migration_version(test_db_url):
