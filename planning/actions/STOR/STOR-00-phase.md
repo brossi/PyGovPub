@@ -6,11 +6,11 @@
 ## Dependency Graph
 [*] STORAGE-001 (Core Interface)
 │
-├─▶ [ ] STORAGE-002 (Schema Versioning)
+├─▶ [*] STORAGE-002 (Schema Versioning)
 │    │
 │    └─▶ [i] STORAGE-004 (Provider Integration)
 │
-└─▶ [ ] STORAGE-003 (Security)
+└─▶ [*] STORAGE-003 (Security)
 │
 └─▶ [i] STORAGE-004 (Encrypted Provider Operations)
 
@@ -25,16 +25,19 @@
 | Component | Status | Progress | Priority | Notes |
 |-----------|--------|----------|----------|-------|
 | STORAGE-001 | In Progress | 75% | High | Core Interface implemented with CRUD operations |
-| STORAGE-002 | Not Started | 0% | High | Schema registry needed for provider compatibility |
-| STORAGE-003 | Not Started | 0% | Medium | Security layer for sensitive metadata |
+| STORAGE-002 | In Progress | 76% | High | Schema registry with API version compatibility |
+| STORAGE-003 | In Progress | 80% | Medium | Security layer with field encryption implemented |
 | STORAGE-004 | In Progress | 25% | Medium | Initial LanceDB provider framework in place |
 
 ### Recent Achievements
 
 1. Completed implementation of core storage interface with full CRUD operations
-2. Added support for MySQL database connections 
-3. Implemented circuit breaker pattern for all database operations
-4. Configured comprehensive monitoring metrics for operations and connections
+2. Implemented schema registry with API version compatibility checking
+3. Added migration verification and feature detection to schema registry
+4. Implemented field-level encryption for sensitive metadata
+5. Added credential management for various providers
+6. Implemented circuit breaker pattern for all database operations
+7. Configured comprehensive monitoring metrics for operations and connections
 
 ### Next Steps
 
