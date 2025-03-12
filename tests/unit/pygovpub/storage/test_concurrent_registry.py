@@ -94,7 +94,7 @@ class TestConcurrentSchemaRegistry:
         
         # Check mock connection was used correctly
         # Each registration should call execute at least once
-        assert registry._storage.conn.execute.call_count >= 5
+        assert registry.storage.conn.execute.call_count >= 5
 
     def test_concurrent_get_version_history(self, registry):
         """Test that concurrent reads of version history work correctly."""
@@ -106,7 +106,7 @@ class TestConcurrentSchemaRegistry:
             {"version": "1.0.1", "description": "Schema update", 
              "applied_at": "2025-03-12T11:00:00", "api_version": "1.0.0"}
         ]
-        registry._storage.conn.execute.return_value = history_result
+        registry.storage.conn.execute.return_value = history_result
         
         # Function to get version history in a thread
         results = []
@@ -174,8 +174,8 @@ class TestConcurrentSchemaRegistry:
         assert len(migration_results) == 3
         
         # Check that correct calls were made
-        assert registry._storage.conn.begin.call_count == 3  # One transaction per migration
-        assert registry._storage.conn.execute.call_count >= 3  # At least one execute per migration
+        assert registry.storage.conn.begin.call_count == 3  # One transaction per migration
+        assert registry.storage.conn.execute.call_count >= 3  # At least one execute per migration
 
     @pytest.mark.asyncio
     async def test_async_concurrent_schema_operations(self, registry):
@@ -218,7 +218,7 @@ class TestConcurrentSchemaRegistry:
         assert any(results), "No operation succeeded"
         
         # Check that appropriate DB calls were made
-        assert registry._storage.conn.execute.call_count > 0
+        assert registry.storage.conn.execute.call_count > 0
 
 
 if __name__ == "__main__":
