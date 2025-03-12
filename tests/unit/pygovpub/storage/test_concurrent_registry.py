@@ -20,9 +20,13 @@ class TestConcurrentSchemaRegistry:
     """Test concurrent access to the schema registry."""
 
     @pytest.fixture
-    def mock_connection(self):
-        """Create a mock connection object."""
+    def mock_storage_interface(self):
+        """Create a mock storage interface."""
+        interface = MagicMock()
+        # Mock connection
         conn = MagicMock()
+        interface.conn = conn
+        
         # Mock transaction context manager
         transaction = MagicMock()
         conn.begin.return_value = transaction
@@ -37,13 +41,13 @@ class TestConcurrentSchemaRegistry:
         }
         conn.execute.return_value = execute_result
         
-        return conn
+        return interface
 
     @pytest.fixture
-    def registry(self, mock_connection):
-        """Create a schema registry with a mock connection."""
+    def registry(self, mock_storage_interface):
+        """Create a schema registry with a mock storage interface."""
         with patch('pygovpub.storage.schema_registry.inspect'):
-            registry = SchemaRegistry(mock_connection)
+            registry = SchemaRegistry(mock_storage_interface)
             # Mock _ensure_version_table to avoid actual table creation
             registry._ensure_version_table = MagicMock(return_value=True)
             return registry
@@ -90,7 +94,7 @@ class TestConcurrentSchemaRegistry:
         
         # Check mock connection was used correctly
         # Each registration should call execute at least once
-        assert registry.connection.execute.call_count >= 5
+        assert registry._storage.conn.execute.call_count >= 5
 
     def test_concurrent_get_version_history(self, registry):
         """Test that concurrent reads of version history work correctly."""
@@ -102,7 +106,7 @@ class TestConcurrentSchemaRegistry:
             {"version": "1.0.1", "description": "Schema update", 
              "applied_at": "2025-03-12T11:00:00", "api_version": "1.0.0"}
         ]
-        registry.connection.execute.return_value = history_result
+        registry._storage.conn.execute.return_value = history_result
         
         # Function to get version history in a thread
         results = []
@@ -170,8 +174,8 @@ class TestConcurrentSchemaRegistry:
         assert len(migration_results) == 3
         
         # Check that correct calls were made
-        assert registry.connection.begin.call_count == 3  # One transaction per migration
-        assert registry.connection.execute.call_count >= 3  # At least one execute per migration
+        assert registry._storage.conn.begin.call_count == 3  # One transaction per migration
+        assert registry._storage.conn.execute.call_count >= 3  # At least one execute per migration
 
     @pytest.mark.asyncio
     async def test_async_concurrent_schema_operations(self, registry):
@@ -214,7 +218,7 @@ class TestConcurrentSchemaRegistry:
         assert any(results), "No operation succeeded"
         
         # Check that appropriate DB calls were made
-        assert registry.connection.execute.call_count > 0
+        assert registry._storage.conn.execute.call_count > 0
 
 
 if __name__ == "__main__":
