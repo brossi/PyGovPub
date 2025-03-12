@@ -24,7 +24,8 @@ def create_date_partitioned_table(
     table_name: str,
     partition_column: str,
     schema: Dict[str, str],
-    engine: Optional[Engine] = None
+    engine: Optional[Engine] = None,
+    create_partition_column_index: bool = False
 ) -> None:
     """
     Create a date-range partitioned table in PostgreSQL.
@@ -34,6 +35,7 @@ def create_date_partitioned_table(
         partition_column: Column to use for partitioning (must be DATE type)
         schema: Dictionary of column definitions {"column_name": "column_type"}
         engine: SQLAlchemy engine (uses default engine if None)
+        create_partition_column_index: Whether to create an index on the partition column
     
     Example:
         ```python
@@ -45,7 +47,8 @@ def create_date_partitioned_table(
                 "title": "TEXT NOT NULL",
                 "introduced_date": "DATE NOT NULL",
                 "status": "TEXT NOT NULL"
-            }
+            },
+            create_partition_column_index=True
         )
         ```
     """
@@ -74,6 +77,15 @@ def create_date_partitioned_table(
     # Execute statement
     with engine.connect() as conn:
         conn.execute(text(sql))
+        
+        # Create index on partition column if requested
+        if create_partition_column_index:
+            index_name = f"idx_{table_name}_{partition_column}"
+            index_sql = f"""
+            CREATE INDEX {index_name} ON {table_name} ({partition_column});
+            """
+            conn.execute(text(index_sql))
+        
         conn.commit()
     
     logger.info(f"Created date-partitioned table {table_name} on {partition_column}")
@@ -649,6 +661,35 @@ def setup_partitioning_environment(engine: Optional[Engine] = None) -> None:
         END IF;
     END;
     $$ LANGUAGE plpgsql;
+    
+    -- Create utility function to move old partitions to separate tablespace
+    CREATE OR REPLACE FUNCTION move_partition_to_archive(
+        partition_table text,
+        archive_tablespace text DEFAULT 'pg_default'
+    )
+    RETURNS void AS $$
+    BEGIN
+        EXECUTE format('ALTER TABLE %I SET TABLESPACE %I', partition_table, archive_tablespace);
+        RAISE NOTICE 'Moved partition % to archive tablespace %', partition_table, archive_tablespace;
+    END;
+    $$ LANGUAGE plpgsql;
+    
+    -- Create partition performance statistics view
+    CREATE OR REPLACE VIEW partition_performance_stats AS
+    SELECT
+        schemaname,
+        relname AS partition_name,
+        n_live_tup AS row_count,
+        pg_size_pretty(pg_total_relation_size(schemaname || '.' || relname)) AS total_size,
+        pg_size_pretty(pg_relation_size(schemaname || '.' || relname)) AS table_size,
+        pg_size_pretty(pg_indexes_size(schemaname || '.' || relname)) AS index_size,
+        pg_stat_get_numscans(relid) AS scan_count,
+        pg_stat_get_tuples_inserted(relid) AS inserts,
+        pg_stat_get_tuples_updated(relid) AS updates,
+        pg_stat_get_tuples_deleted(relid) AS deletes
+    FROM pg_stat_user_tables
+    WHERE relname ~ '_[0-9]+'  -- Naming pattern for partitions
+    ORDER BY relname;
     """
     
     try:

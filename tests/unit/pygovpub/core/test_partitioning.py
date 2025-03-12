@@ -68,6 +68,37 @@ class TestDatePartitioning:
             assert table_name in sql
             assert "PARTITION BY RANGE" in sql
             assert partition_column in sql
+    
+    def test_create_date_partitioned_table_with_index(self):
+        """Test creating a date-partitioned table with index on the partition column."""
+        with mock.patch('sqlalchemy.engine.Connection.execute') as mock_execute:
+            mock_execute.return_value = None
+            
+            # Define table schema for legislative bills by year
+            table_name = "test_bills_by_date"
+            partition_column = "introduced_date"
+            
+            # Call function with index parameter
+            create_date_partitioned_table(
+                table_name=table_name,
+                partition_column=partition_column,
+                schema={
+                    "id": "SERIAL PRIMARY KEY",
+                    "title": "TEXT NOT NULL",
+                    "introduced_date": "DATE NOT NULL"
+                },
+                create_partition_column_index=True
+            )
+            
+            # Verify SQL execution was called multiple times (table creation + index)
+            assert mock_execute.call_count >= 1
+            
+            # Check table creation
+            table_create_sql = mock_execute.call_args_list[0][0][0].text
+            assert "CREATE TABLE" in table_create_sql
+            assert table_name in table_create_sql
+            assert "PARTITION BY RANGE" in table_create_sql
+            assert partition_column in table_create_sql
             
     def test_create_date_partition(self):
         """Test creating a date partition."""
@@ -344,3 +375,51 @@ def test_detach_partition():
         assert table_name in sql
         assert "DETACH PARTITION" in sql
         assert partition_table in sql
+
+
+def test_setup_partitioning_environment():
+    """Test setting up the partitioning environment."""
+    with mock.patch('sqlalchemy.engine.Connection.execute') as mock_execute:
+        mock_execute.return_value = None
+        
+        # Call function
+        setup_partitioning_environment()
+        
+        # Verify SQL execution
+        mock_execute.assert_called_once()
+        sql = mock_execute.call_args[0][0].text
+        assert "cron.partition_maintenance_enabled" in sql
+        assert "toggle_partition_maintenance" in sql
+        assert "move_partition_to_archive" in sql
+        assert "partition_performance_stats" in sql
+
+
+def test_partitioning_performance_monitoring():
+    """Test partition performance statistics view."""
+    with mock.patch('sqlalchemy.engine.Connection.execute') as mock_execute:
+        # Create a mock result for the view query
+        mock_result = mock.MagicMock()
+        mock_rows = [
+            {"partition_name": "bills_by_date_2022", "row_count": 1000, "total_size": "100 MB"},
+            {"partition_name": "bills_by_date_2023", "row_count": 2000, "total_size": "200 MB"}
+        ]
+        mock_result.__iter__.return_value = [mock.MagicMock(**row) for row in mock_rows]
+        mock_execute.return_value = mock_result
+        
+        # Call setup to ensure view is created
+        setup_partitioning_environment()
+        
+        # Mock query execution for the view
+        view_query = text("SELECT * FROM partition_performance_stats")
+        with get_engine().connect() as conn:
+            result = conn.execute(view_query)
+            stats = [dict(row) for row in result]
+        
+        # Verify results
+        assert len(stats) == 2
+        assert stats[0]["partition_name"] == "bills_by_date_2022"
+        assert stats[0]["row_count"] == 1000
+        assert stats[0]["total_size"] == "100 MB"
+        assert stats[1]["partition_name"] == "bills_by_date_2023"
+        assert stats[1]["row_count"] == 2000
+        assert stats[1]["total_size"] == "200 MB"

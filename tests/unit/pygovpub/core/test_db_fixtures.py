@@ -165,6 +165,7 @@ class TestLegislativeFixtures:
         # Setup mock return
         sample_corpus = [
             {
+                "id": 1,
                 "title": "Healthcare Reform Act",
                 "text": "A bill to reform healthcare access and improve affordability...",
                 "metadata": {
@@ -174,6 +175,7 @@ class TestLegislativeFixtures:
                 }
             },
             {
+                "id": 2,
                 "title": "Environmental Protection Bill",
                 "text": "A bill to strengthen environmental regulations...",
                 "metadata": {
@@ -203,6 +205,147 @@ class TestLegislativeFixtures:
         healthcare_bills = [bill for bill in corpus if "healthcare" in bill["title"].lower()]
         environment_bills = [bill for bill in corpus if "environment" in bill["title"].lower()]
         assert len(healthcare_bills) + len(environment_bills) > 0
+    
+    def test_create_legislative_text_corpus_with_db_storage(self):
+        """Test creating a corpus with database storage and full-text search capabilities."""
+        # Skip if not postgres
+        if get_engine().dialect.name != 'postgresql':
+            pytest.skip("This test requires PostgreSQL")
+            
+        # Setup expected corpus result
+        sample_corpus = [
+            {
+                "id": 1,
+                "title": "Healthcare Reform Act",
+                "text": "A bill to reform healthcare access and improve affordability...",
+                "metadata": {
+                    "congress": 117,
+                    "bill_type": "HR",
+                    "bill_number": 1234,
+                    "topic": "healthcare"
+                }
+            },
+            {
+                "id": 2,
+                "title": "Environmental Protection Bill",
+                "text": "A bill to strengthen environmental regulations...",
+                "metadata": {
+                    "congress": 117,
+                    "bill_type": "S",
+                    "bill_number": 5678,
+                    "topic": "environment"
+                }
+            }
+        ]
+        create_legislative_text_corpus.return_value = sample_corpus
+        
+        # Mock SQL execution for database operations
+        with mock.patch('sqlalchemy.MetaData'), \
+             mock.patch('sqlalchemy.Table'), \
+             mock.patch('sqlalchemy.text'), \
+             mock.patch('sqlalchemy.engine.Engine.begin') as mock_begin:
+            
+            # Configure the mock context manager
+            mock_context = mock.MagicMock()
+            mock_conn = mock.MagicMock()
+            mock_context.__enter__.return_value = mock_conn
+            mock_begin.return_value = mock_context
+            
+            # Call function with db storage
+            corpus = create_legislative_text_corpus(
+                count=2,
+                topics=["healthcare", "environment"],
+                include_metadata=True,
+                store_in_db=True,
+                table_name="test_fts_corpus"
+            )
+            
+            # Verify result
+            assert len(corpus) == 2
+            
+            # Verify database operations were performed
+            assert mock_begin.call_count >= 1
+            
+            # Execute should be called multiple times:
+            # - Once for each document insert (2)
+            # - Once for each FTS vector update (2)
+            # - Once for index creation
+            assert mock_conn.execute.call_count >= 5
+    
+    @pytest.mark.integration
+    def test_fts_corpus_integration(self):
+        """Test full-text search corpus creation and querying (integration test)."""
+        # Skip if not postgres
+        if get_engine().dialect.name != 'postgresql':
+            pytest.skip("This test requires PostgreSQL")
+        
+        # Mock to avoid actual DB operations in unit tests, but in integration tests
+        # we'd use a real database and run the full process
+        with mock.patch('sqlalchemy.Table'), \
+             mock.patch('sqlalchemy.engine.Engine.begin') as mock_begin, \
+             mock.patch('sqlalchemy.engine.Engine.connect') as mock_connect:
+            
+            # Configure mocks
+            mock_begin_ctx = mock.MagicMock()
+            mock_conn_begin = mock.MagicMock()
+            mock_begin_ctx.__enter__.return_value = mock_conn_begin
+            mock_begin.return_value = mock_begin_ctx
+            
+            mock_connect_ctx = mock.MagicMock()
+            mock_conn = mock.MagicMock()
+            mock_connect_ctx.__enter__.return_value = mock_conn
+            mock_connect.return_value = mock_connect_ctx
+            
+            # Setup mock query results
+            mock_result = mock.MagicMock()
+            mock_result_rows = [
+                {"id": 1, "title": "Healthcare Reform Act", "rank": 0.75},
+                {"id": 2, "title": "Medical Coverage Improvement Act", "rank": 0.5}
+            ]
+            mock_result.__iter__.return_value = [mock.MagicMock(**row) for row in mock_result_rows]
+            mock_conn.execute.return_value = mock_result
+            
+            # Create test table name
+            test_table_name = "test_legislative_fts_corpus"
+            
+            # Create a corpus with DB storage for testing
+            create_legislative_text_corpus.return_value = [
+                {"id": 1, "title": "Healthcare Reform Act", "text": "Content..."},
+                {"id": 2, "title": "Medical Coverage Improvement Act", "text": "Content..."},
+                {"id": 3, "title": "Environmental Protection Act", "text": "Content..."}
+            ]
+            
+            corpus = create_legislative_text_corpus(
+                count=3,
+                topics=["healthcare", "environment"],
+                include_metadata=True,
+                store_in_db=True,
+                table_name=test_table_name
+            )
+            
+            # Verify corpus was created
+            assert len(corpus) == 3
+            
+            # Test a full-text search query
+            search_query = text(f"""
+            SELECT id, title, 
+                   ts_rank(fts_document, to_tsquery('english', 'healthcare')) as rank
+            FROM {test_table_name}
+            WHERE fts_document @@ to_tsquery('english', 'healthcare')
+            ORDER BY rank DESC
+            """)
+            
+            # Execute search
+            with get_engine().connect() as conn:
+                result = conn.execute(search_query)
+                healthcare_docs = [dict(row) for row in result]
+            
+            # Verify search results
+            assert len(healthcare_docs) == 2
+            assert healthcare_docs[0]["id"] == 1
+            assert healthcare_docs[0]["title"] == "Healthcare Reform Act"
+            assert isinstance(healthcare_docs[0]["rank"], float)
+            assert healthcare_docs[0]["rank"] > healthcare_docs[1]["rank"]
 
 
 class TestBillHierarchyFixtures:

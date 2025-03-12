@@ -444,6 +444,8 @@ def create_legislative_text_corpus(
     congress: int = 117,
     min_length: int = 100,
     max_length: int = 1000,
+    store_in_db: bool = False,
+    table_name: str = "test_legislative_corpus",
     engine=None
 ) -> List[Dict[str, Any]]:
     """
@@ -456,6 +458,8 @@ def create_legislative_text_corpus(
         congress: Congress number for metadata
         min_length: Minimum text length
         max_length: Maximum text length
+        store_in_db: Whether to store the corpus in the database
+        table_name: Table name to use if storing in database
         engine: SQLAlchemy engine (uses default engine if None)
     
     Returns:
@@ -466,10 +470,15 @@ def create_legislative_text_corpus(
         corpus = create_legislative_text_corpus(
             count=20,
             topics=["healthcare", "environment"],
-            include_metadata=True
+            include_metadata=True,
+            store_in_db=True
         )
         ```
     """
+    import psycopg
+    from sqlalchemy.dialects.postgresql import JSONB, TEXT
+    from sqlalchemy import Table, Column, Integer, String, MetaData, text
+    
     topics = topics or list(LEGISLATIVE_TERMS.keys())
     corpus = []
     
@@ -513,6 +522,7 @@ def create_legislative_text_corpus(
         
         # Create document
         document = {
+            "id": i + 1,
             "title": title,
             "text": text
         }
@@ -525,11 +535,83 @@ def create_legislative_text_corpus(
                 "bill_number": random.randint(1, 9999),
                 "status": random.choice(BILL_STATUS),
                 "version_code": random.choice(BILL_VERSION_CODES),
-                "introduced_date": datetime.now() - timedelta(days=random.randint(0, 365)),
+                "introduced_date": (datetime.now() - timedelta(days=random.randint(0, 365))).isoformat(),
                 "topic": topic
             }
         
         corpus.append(document)
+    
+    # Store in database if requested
+    if store_in_db and engine:
+        engine = engine or get_engine()
+        
+        if engine.dialect.name == 'postgresql':
+            # Create table with full-text search columns
+            metadata = MetaData()
+            
+            # Define table with FTS columns
+            corpus_table = Table(
+                table_name, metadata,
+                Column('id', Integer, primary_key=True),
+                Column('title', String(200), nullable=False),
+                Column('text', TEXT, nullable=False),
+                Column('metadata', JSONB, nullable=True),
+                Column('fts_document', sqlalchemy.types.UnicodeText, nullable=True),
+                Column('title_vector', sqlalchemy.types.UnicodeText, nullable=True),
+                Column('text_vector', sqlalchemy.types.UnicodeText, nullable=True)
+            )
+            
+            # Create table if it doesn't exist
+            with engine.begin() as conn:
+                metadata.create_all(conn, checkfirst=True)
+            
+            # Insert data
+            insert_query = text(f"""
+            INSERT INTO {table_name} (id, title, text, metadata)
+            VALUES (:id, :title, :text, :metadata::jsonb)
+            ON CONFLICT (id) DO UPDATE SET
+                title = EXCLUDED.title,
+                text = EXCLUDED.text,
+                metadata = EXCLUDED.metadata
+            """)
+            
+            # Update document with FTS indexes
+            update_fts_query = text(f"""
+            UPDATE {table_name}
+            SET
+                fts_document = setweight(to_tsvector('english', coalesce(title, '')), 'A') || 
+                               setweight(to_tsvector('english', coalesce(text, '')), 'B'),
+                title_vector = to_tsvector('english', coalesce(title, '')),
+                text_vector = to_tsvector('english', coalesce(text, ''))
+            WHERE id = :id
+            """)
+            
+            # Create indexes
+            create_indexes_query = text(f"""
+            CREATE INDEX IF NOT EXISTS idx_{table_name}_fts ON {table_name} USING GIN (fts_document);
+            CREATE INDEX IF NOT EXISTS idx_{table_name}_title_vector ON {table_name} USING GIN (title_vector);
+            CREATE INDEX IF NOT EXISTS idx_{table_name}_text_vector ON {table_name} USING GIN (text_vector);
+            """)
+            
+            with engine.begin() as conn:
+                # Insert documents
+                for doc in corpus:
+                    doc_params = {
+                        'id': doc['id'],
+                        'title': doc['title'],
+                        'text': doc['text'],
+                        'metadata': sqlalchemy.json.dumps(doc.get('metadata', {}))
+                    }
+                    conn.execute(insert_query, doc_params)
+                
+                # Update FTS columns
+                for doc in corpus:
+                    conn.execute(update_fts_query, {'id': doc['id']})
+                
+                # Create indexes
+                conn.execute(create_indexes_query)
+            
+            logger.info(f"Created full-text search corpus table {table_name} with {len(corpus)} documents")
     
     return corpus
 
