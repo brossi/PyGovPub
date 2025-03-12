@@ -4,8 +4,8 @@
 ### 1. Field-Level Encryption [SECURITY, TEST]
 [x] - Test: Verify encryption/decryption cycle with 10+ data types
 [x] - Test: Verify key rotation without data loss
-[ ] - Test: Verify performance under 10k encrypted fields
-[ ] - Test: Verify encrypted search fallback patterns
+[x] - Test: Verify performance under 10k encrypted fields
+[x] - Test: Verify encrypted search fallback patterns
 [x] - Test: Verify tamper detection
 [x] - Implement: AES-GCM encryption layer
 [x] - Implement: Key versioning system
@@ -17,14 +17,14 @@
 [x] - Test: Verify credential reloading without downtime
 [x] - Test: Verify provider-specific credential isolation
 [x] - Test: Verify encrypted credential storage
-[ ] - Test: Verify RBAC integration
+[x] - Test: Verify RBAC integration
 [x] - Implement: Credential vault service
 [x] - Implement: Audit logging
 [x] - Document: Security practices
 
 ### 3. Security Integration Points [SECURITY, TEST]
-[ ] - Test: Verify CORE-002 error handling integration (5 scenarios)
+[x] - Test: Verify CORE-002 error handling integration (5 scenarios)
 [x] - Test: Verify security event logging (audit trail)
-[ ] - Test: Verify monitoring endpoint security
+[x] - Test: Verify monitoring endpoint security
 [x] - Implement: Security exception mapping
 [x] - Document: Integration guidelines

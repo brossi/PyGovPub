@@ -373,8 +373,24 @@ def run_health_check() -> Dict[str, Any]:
         # Check circuit breakers
         circuit_breaker_results = check_circuit_breakers()
         
-        # Get overall status (considering circuit breakers)
+        # Check storage security
+        try:
+            from pygovpub.diagnostics.security_monitor import check_storage_security
+            storage_security_results = check_storage_security()
+        except ImportError:
+            storage_security_results = {"secure": False, "error": "Security monitoring not installed"}
+        except Exception as e:
+            storage_security_results = {"secure": False, "error": str(e), "issues": ["Failed to run security check"]}
+            
+        # Get overall status (considering circuit breakers and security)
         status = get_status_summary(api_results, config_results, circuit_breaker_results)
+        
+        # Security issues take precedence and always result in unhealthy/critical status
+        if not storage_security_results.get("secure", True):
+            if storage_security_results.get("issues") and any("tamper" in str(issue).lower() for issue in storage_security_results.get("issues", [])):
+                status = "critical"  # Possible tampering is critical
+            else:
+                status = "unhealthy"  # Other security issues are unhealthy
         
         # Build results dictionary
         return {
@@ -385,7 +401,8 @@ def run_health_check() -> Dict[str, Any]:
             "configuration": config_results,
             "system": system_results,
             "performance": performance_results,
-            "circuit_breakers": circuit_breaker_results
+            "circuit_breakers": circuit_breaker_results,
+            "storage_security": storage_security_results
         }
     finally:
         # Ensure the event loop is closed
