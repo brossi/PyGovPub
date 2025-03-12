@@ -105,7 +105,7 @@ class SchemaRegistry:
         Returns:
             Current schema version or None if not set
         """
-        if self.db_type in ["pinecone", "supabase"]:
+        if self.db_type in ["pinecone", "supabase", "lancedb"]:
             return None
 
         try:
