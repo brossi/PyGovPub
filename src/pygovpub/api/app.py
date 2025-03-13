@@ -209,7 +209,21 @@ async def startup():
 async def shutdown():
     """Clean up resources on shutdown."""
     logger.info("Shutting down PyGovPub API")
-    # Add any cleanup code here
+    
+    # Clean up connection pools
+    try:
+        # Import here to avoid circular imports
+        from pygovpub.api.routers import lancedb_search
+        
+        # Close the LanceDB connection pool if it exists
+        if hasattr(lancedb_search, "SEARCH_POOL") and lancedb_search.SEARCH_POOL is not None:
+            try:
+                lancedb_search.SEARCH_POOL.close_all()
+                logger.info("Closed LanceDB vector search connection pool")
+            except Exception as e:
+                logger.error(f"Error closing LanceDB vector search connection pool: {e}")
+    except Exception as e:
+        logger.error(f"Error during shutdown cleanup: {e}")
     
 
 # Function to set up the routers
@@ -225,9 +239,12 @@ def setup_routers():
         search_router
     )
     
+    # Import the new LanceDB search router with optimized connection pooling
+    from pygovpub.api.routers import lancedb_search
+    
     # Add dependency to each router
     for router in [bills_router, committees_router, documents_router, members_router, 
-                  cfr_router, court_opinions_router, search_router]:
+                  cfr_router, court_opinions_router, search_router, lancedb_search.router]:
         for route in router.routes:
             if hasattr(route, "dependant"):
                 # Add the get_api_router dependency if it's not already there
@@ -252,6 +269,7 @@ def setup_routers():
     app.include_router(cfr_router)
     app.include_router(court_opinions_router)
     app.include_router(search_router)
+    app.include_router(lancedb_search.router)
 
 # Set up the routers
 setup_routers()
@@ -276,6 +294,7 @@ async def root():
             "cfr": "/cfr",
             "court_opinions": "/court-opinions",
             "search": "/search",
+            "vector_search": "/vector-search",
         }
     }
 
