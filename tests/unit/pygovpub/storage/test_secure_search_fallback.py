@@ -364,3 +364,231 @@ class TestSecureSearchFallback:
         assert "contains" in status["supported_operations"]
         assert "range" in status["supported_operations"]
         assert "batch_operations" in status["supported_operations"]
+        
+    def test_nested_field_access_with_missing_fields(self):
+        """Test accessing nested fields with missing parts."""
+        # Test data with nested fields
+        nested_data = [
+            {
+                "id": "doc1",
+                "metadata": {
+                    # Missing security field
+                }
+            },
+            {
+                "id": "doc2",
+                "metadata": {
+                    "security": {
+                        # Missing classification field
+                    }
+                }
+            }
+        ]
+        
+        # Create a simple predicate that should match nothing
+        predicate = lambda x: x == "TOP_SECRET"
+        
+        # This should not match any documents since the path is invalid
+        results = self.fallback.decrypt_and_filter(
+            nested_data,
+            "metadata.security.classification",
+            predicate
+        )
+        
+        # Verify we get no results
+        assert len(results) == 0
+    
+    def test_error_handling_in_decrypt_and_filter(self):
+        """Test error handling in decrypt_and_filter method."""
+        # Make decrypt_metadata raise an exception
+        self.mock_security.decrypt_metadata.side_effect = ValueError("Test error")
+        
+        # Call decrypt_and_filter which should catch the exception
+        results = self.fallback.decrypt_and_filter(
+            self.test_data,
+            "api_key",
+            lambda x: True
+        )
+        
+        # Should return original results on error
+        assert results == self.test_data
+        
+    def test_case_sensitivity_in_search_methods(self):
+        """Test case sensitivity options in search methods."""
+        # Configure mock for case sensitivity testing
+        def mock_decrypt_metadata(data):
+            """Return test values for case sensitivity testing."""
+            result = {}
+            for key, value in data.items():
+                if key == "api_key" and value == "__ENC_V1__:encrypted_api_key_1:hmac1":
+                    result[key] = "TestValue"
+                elif key == "api_key" and value == "__ENC_V1__:encrypted_api_key_2:hmac2":
+                    result[key] = "testvalue"
+                elif key == "api_key" and value == "__ENC_V1__:encrypted_api_key_3:hmac3":
+                    result[key] = "TESTVALUE"
+                else:
+                    result[key] = value
+            return result
+            
+        self.mock_security.decrypt_metadata.side_effect = mock_decrypt_metadata
+        
+        # Test case sensitive exact match (should only match doc1)
+        results = self.fallback.search_by_exact_match(
+            self.test_data,
+            "api_key",
+            "TestValue",
+            case_sensitive=True
+        )
+        assert len(results) == 1
+        assert results[0]["id"] == "doc1"
+        
+        # Test case insensitive exact match (should match all three)
+        results = self.fallback.search_by_exact_match(
+            self.test_data,
+            "api_key",
+            "testvalue",
+            case_sensitive=False
+        )
+        assert len(results) == 3
+        
+        # Test case sensitive prefix search
+        results = self.fallback.search_by_prefix(
+            self.test_data,
+            "api_key",
+            "Test",
+            case_sensitive=True
+        )
+        assert len(results) == 1
+        assert results[0]["id"] == "doc1"
+        
+        # Test case sensitive contains search
+        results = self.fallback.search_by_contains(
+            self.test_data,
+            "api_key",
+            "Valu",
+            case_sensitive=True
+        )
+        assert len(results) == 1
+        assert results[0]["id"] == "doc1"
+        
+    def test_non_string_values_in_search(self):
+        """Test handling of non-string values in search predicates."""
+        # Configure mock to return non-string values
+        def mock_decrypt_metadata(data):
+            """Return test values including non-string types."""
+            result = {}
+            for key, value in data.items():
+                if key == "api_key" and value == "__ENC_V1__:encrypted_api_key_1:hmac1":
+                    result[key] = 123  # Integer
+                elif key == "api_key" and value == "__ENC_V1__:encrypted_api_key_2:hmac2":
+                    result[key] = None  # None
+                elif key == "api_key" and value == "__ENC_V1__:encrypted_api_key_3:hmac3":
+                    result[key] = {"nested": "value"}  # Dict
+                else:
+                    result[key] = value
+            return result
+            
+        self.mock_security.decrypt_metadata.side_effect = mock_decrypt_metadata
+        
+        # Test exact match with non-string values (should not match)
+        results = self.fallback.search_by_exact_match(
+            self.test_data,
+            "api_key",
+            "123"
+        )
+        assert len(results) == 0
+        
+        # Test prefix search with non-string values (should not match)
+        results = self.fallback.search_by_prefix(
+            self.test_data,
+            "api_key",
+            "12"
+        )
+        assert len(results) == 0
+        
+        # Test contains search with non-string values (should not match)
+        results = self.fallback.search_by_contains(
+            self.test_data,
+            "api_key",
+            "est"
+        )
+        assert len(results) == 0
+        
+    def test_empty_batch_operations(self):
+        """Test batch operations with empty operation list."""
+        # Call with empty operations list
+        results = self.fallback.perform_batch_operations(
+            self.test_data,
+            []
+        )
+        
+        # Should return original results unchanged
+        assert results == self.test_data
+        
+    def test_invalid_operations_in_batch(self):
+        """Test batch operations with invalid operation specifications."""
+        # Define invalid batch operations
+        operations = [
+            {
+                # Missing operation type
+                "field": "api_key",
+                "value": "test"
+            },
+            {
+                "operation": "prefix",
+                # Missing field
+                "value": "test"
+            },
+            {
+                "operation": "unknown_op",  # Invalid operation type
+                "field": "api_key",
+                "value": "test"
+            }
+        ]
+        
+        # Configure mock to allow testing the operation validation logic
+        def mock_decrypt_metadata(data):
+            return data
+            
+        self.mock_security.decrypt_metadata.side_effect = mock_decrypt_metadata
+        
+        # Call with invalid operations
+        results = self.fallback.perform_batch_operations(
+            self.test_data,
+            operations
+        )
+        
+        # All items should fail validation and no matches should be returned
+        assert len(results) == 0
+    
+    def test_real_performance_test_method(self):
+        """Test the actual test_performance method without mocking sub-methods."""
+        # Configure test security to avoid actual encryption
+        test_security = MagicMock()
+        test_security.encryption_enabled = True
+        test_security.process_metadata.side_effect = lambda x: x
+        test_security.decrypt_metadata.side_effect = lambda x: x
+        
+        # Create fallback with test security
+        fallback = SecureSearchFallback(test_security)
+        
+        # Run performance test with a small number of items
+        results = fallback.test_performance(field_count=10)
+        
+        # Verify results structure
+        assert "summary" in results
+        assert "total_items" in results["summary"]
+        assert results["summary"]["total_items"] == 10
+        assert "encryption_time_ms" in results["summary"]
+        assert "average_search_time_ms" in results["summary"]
+        
+        # Verify operation results
+        assert "exact_match" in results
+        assert "duration_ms" in results["exact_match"]
+        assert "result_count" in results["exact_match"]
+        assert "throughput_items_per_sec" in results["exact_match"]
+        
+        assert "prefix" in results
+        assert "contains" in results
+        assert "range" in results
+        assert "batch_operations" in results

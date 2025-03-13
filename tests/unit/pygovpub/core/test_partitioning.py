@@ -25,17 +25,20 @@ pytestmark = pytest.mark.skipif(
 Base = declarative_base()
 
 # These will be implemented in the partitioning module
-# Import placeholder for now
-from unittest.mock import MagicMock
-create_date_partitioned_table = MagicMock()
-create_list_partitioned_table = MagicMock()
-create_range_partitioned_table = MagicMock()
-create_date_partition = MagicMock()
-create_list_partition = MagicMock()
-create_range_partition = MagicMock()
-attach_partition = MagicMock()
-detach_partition = MagicMock()
-get_partition_info = MagicMock()
+# Import the actual functions from the module
+from pygovpub.core.partitioning import (
+    create_date_partitioned_table,
+    create_list_partitioned_table,
+    create_range_partitioned_table,
+    create_date_partition,
+    create_list_partition,
+    create_range_partition,
+    attach_partition,
+    detach_partition,
+    get_partition_info,
+    setup_partitioning_environment,
+    create_partition_maintenance_function
+)
 
 
 class TestDatePartitioning:
