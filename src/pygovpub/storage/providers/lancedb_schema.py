@@ -44,6 +44,7 @@ class LanceDBSchemaAdapter:
         Returns:
             PyArrow schema for the table
         """
+        # Get the table using the provider's connection pool
         table = self.provider._get_or_create_table(table_name)
         return table.schema
     

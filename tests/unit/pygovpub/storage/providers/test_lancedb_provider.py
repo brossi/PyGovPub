@@ -667,3 +667,311 @@ class TestLanceDBProvider:
             assert len(results) == 1
             assert results[0]["id"] == "test-id"
             assert results[0]["content"] == "Test content text search"
+
+
+class TestLanceDBConnectionPool:
+    """Test suite for the LanceDBConnectionPool class."""
+    
+    def test_init(self):
+        """Test initialization of connection pool."""
+        with patch('lancedb.connect') as mock_connect:
+            # Create mock connections
+            mock_connections = [MagicMock() for _ in range(3)]
+            mock_connect.side_effect = mock_connections
+            
+            # Create pool with min_size of 3
+            from pygovpub.storage.providers.lancedb_provider import LanceDBConnectionPool
+            pool = LanceDBConnectionPool(
+                uri="/path/to/db", 
+                pool_id="test", 
+                min_size=3,
+                max_size=5
+            )
+            
+            # Verify connections created
+            assert mock_connect.call_count == 3
+            assert pool._available_connections.qsize() == 3
+            assert len(pool._in_use_connections) == 0
+            
+            # Verify metrics initialized
+            with patch('pygovpub.storage.providers.lancedb_provider.LANCEDB_POOL_CONNECTIONS.labels') as mock_metrics:
+                mock_gauge = MagicMock()
+                mock_metrics.return_value = mock_gauge
+                
+                # Create a new pool to trigger metrics
+                pool = LanceDBConnectionPool(uri="/path/to/db", pool_id="metrics_test", min_size=1)
+                
+                # Verify metrics called
+                mock_metrics.assert_called()
+    
+    def test_get_connection(self):
+        """Test getting a connection from the pool."""
+        with patch('lancedb.connect') as mock_connect:
+            mock_connection = MagicMock()
+            mock_connect.return_value = mock_connection
+            
+            # Create pool with min_size of 1
+            from pygovpub.storage.providers.lancedb_provider import LanceDBConnectionPool
+            pool = LanceDBConnectionPool(uri="/path/to/db", pool_id="test", min_size=1)
+            
+            # Mock connection validation
+            mock_connection.table_names.return_value = ["test_table"]
+            
+            # Get a connection
+            connection, conn_id = pool.get_connection()
+            
+            # Verify connection
+            assert connection is mock_connection
+            assert conn_id is not None
+            assert pool._available_connections.qsize() == 0
+            assert len(pool._in_use_connections) == 1
+            assert conn_id in pool._in_use_connections
+            
+            # Verify connection validation
+            mock_connection.table_names.assert_called_once()
+    
+    def test_release_connection(self):
+        """Test releasing a connection back to the pool."""
+        with patch('lancedb.connect') as mock_connect:
+            mock_connection = MagicMock()
+            mock_connect.return_value = mock_connection
+            
+            # Create pool with min_size of 1
+            from pygovpub.storage.providers.lancedb_provider import LanceDBConnectionPool
+            pool = LanceDBConnectionPool(uri="/path/to/db", pool_id="test", min_size=1)
+            
+            # Mock connection validation
+            mock_connection.table_names.return_value = ["test_table"]
+            
+            # Get a connection
+            connection, conn_id = pool.get_connection()
+            
+            # Release the connection
+            pool.release_connection(connection, conn_id)
+            
+            # Verify connection is back in the pool
+            assert pool._available_connections.qsize() == 1
+            assert len(pool._in_use_connections) == 0
+    
+    def test_invalid_connection_handling(self):
+        """Test handling of invalid connections."""
+        with patch('lancedb.connect') as mock_connect:
+            mock_connection1 = MagicMock()
+            mock_connection2 = MagicMock()
+            mock_connect.side_effect = [mock_connection1, mock_connection2]
+            
+            # Create pool with min_size of 1
+            from pygovpub.storage.providers.lancedb_provider import LanceDBConnectionPool
+            pool = LanceDBConnectionPool(uri="/path/to/db", pool_id="test", min_size=1)
+            
+            # Make the connection invalid
+            mock_connection1.table_names.side_effect = Exception("Connection error")
+            
+            # Get a connection (should create a new one)
+            connection, conn_id = pool.get_connection()
+            
+            # Verify new connection
+            assert connection is mock_connection2
+            assert conn_id is not None
+            assert mock_connect.call_count == 2
+    
+    def test_cleanup_idle_connections(self):
+        """Test cleaning up idle connections."""
+        with patch('lancedb.connect') as mock_connect:
+            mock_connection1 = MagicMock()
+            mock_connection2 = MagicMock()
+            mock_connect.side_effect = [mock_connection1, mock_connection2]
+            
+            # Create pool with min_size of 1 and idle_timeout of 0.1 seconds
+            from pygovpub.storage.providers.lancedb_provider import LanceDBConnectionPool
+            with patch('time.time', side_effect=[100.0, 100.1, 200.2]):  # First creation time, then check time
+                pool = LanceDBConnectionPool(
+                    uri="/path/to/db", 
+                    pool_id="test", 
+                    min_size=1,
+                    idle_timeout=0.1
+                )
+                
+                # Clean up idle connections
+                with patch('time.time', return_value=200.2):  # 100.2 seconds later
+                    cleaned_up = pool.cleanup_idle_connections()
+            
+            # Verify connections were cleaned up and recreated
+            assert cleaned_up == 1
+            assert mock_connect.call_count == 2  # 1 initial + 1 recreated
+            assert pool._available_connections.qsize() == 1
+    
+    def test_get_connection_pool_function(self):
+        """Test the get_connection_pool function for singleton pools."""
+        with patch('pygovpub.storage.providers.lancedb_provider.LanceDBConnectionPool') as mock_pool_class:
+            mock_pool1 = MagicMock()
+            mock_pool2 = MagicMock()
+            mock_pool_class.side_effect = [mock_pool1, mock_pool2]
+            
+            # Get pools with the same URI and pool_id
+            from pygovpub.storage.providers.lancedb_provider import get_connection_pool
+            pool1 = get_connection_pool(uri="/path/to/db", pool_id="test")
+            pool2 = get_connection_pool(uri="/path/to/db", pool_id="test")
+            
+            # Verify only one pool created
+            assert mock_pool_class.call_count == 1
+            assert pool1 is pool2
+            
+            # Get pool with a different pool_id
+            pool3 = get_connection_pool(uri="/path/to/db", pool_id="other")
+            
+            # Verify a new pool was created
+            assert mock_pool_class.call_count == 2
+            assert pool1 is not pool3
+
+
+class TestLanceDBProviderWithPool:
+    """Test suite for LanceDBProvider with connection pooling."""
+    
+    def test_init_with_pool_enabled(self):
+        """Test provider initialization with connection pooling enabled."""
+        with patch('pygovpub.storage.providers.lancedb_provider.get_connection_pool') as mock_get_pool:
+            mock_pool = MagicMock()
+            mock_connection = MagicMock()
+            mock_pool.get_connection.return_value = (mock_connection, "test_conn_id")
+            mock_get_pool.return_value = mock_pool
+            
+            # Create provider with connection pooling
+            provider = LanceDBProvider(
+                uri="/path/to/db", 
+                use_connection_pool=True,
+                pool_id="test_pool",
+                pool_max_size=10,
+                pool_min_size=2
+            )
+            
+            # Verify pool created and used
+            mock_get_pool.assert_called_once_with(
+                uri="/path/to/db",
+                pool_id="test_pool",
+                max_size=10,
+                min_size=2,
+                **{}
+            )
+            assert provider.connection_pool is mock_pool
+            assert provider.db is mock_connection
+            assert provider.current_connection_id == "test_conn_id"
+    
+    def test_init_with_pool_disabled(self):
+        """Test provider initialization with connection pooling disabled."""
+        with patch('lancedb.connect') as mock_connect:
+            with patch('pygovpub.storage.providers.lancedb_provider.get_connection_pool') as mock_get_pool:
+                mock_connection = MagicMock()
+                mock_connect.return_value = mock_connection
+                
+                # Create provider with connection pooling disabled
+                provider = LanceDBProvider(
+                    uri="/path/to/db", 
+                    use_connection_pool=False
+                )
+                
+                # Verify direct connection used
+                mock_get_pool.assert_not_called()
+                mock_connect.assert_called_once_with("/path/to/db")
+                assert provider.connection_pool is None
+                assert provider.db is mock_connection
+    
+    def test_get_connection_method(self):
+        """Test the _get_connection method."""
+        # Test with pooling enabled
+        with patch('pygovpub.storage.providers.lancedb_provider.get_connection_pool') as mock_get_pool:
+            mock_pool = MagicMock()
+            mock_connection = MagicMock()
+            mock_pool.get_connection.return_value = (mock_connection, "test_conn_id")
+            mock_get_pool.return_value = mock_pool
+            
+            # Create provider with connection pooling
+            provider = LanceDBProvider(
+                uri="/path/to/db", 
+                use_connection_pool=True
+            )
+            
+            # Get connection
+            connection, conn_id = provider._get_connection()
+            
+            # Verify connection from pool
+            assert connection is mock_connection
+            assert conn_id == "test_conn_id"
+            mock_pool.get_connection.assert_called_once()
+        
+        # Test with pooling disabled
+        with patch('lancedb.connect') as mock_connect:
+            mock_connection = MagicMock()
+            mock_connect.return_value = mock_connection
+            
+            # Create provider without connection pooling
+            provider = LanceDBProvider(
+                uri="/path/to/db", 
+                use_connection_pool=False
+            )
+            
+            # Get connection
+            connection, conn_id = provider._get_connection()
+            
+            # Verify direct connection
+            assert connection is mock_connection
+            assert conn_id is None
+    
+    def test_with_connection_method(self):
+        """Test the _with_connection method."""
+        with patch('pygovpub.storage.providers.lancedb_provider.get_connection_pool') as mock_get_pool:
+            mock_pool = MagicMock()
+            mock_connection = MagicMock()
+            mock_pool.get_connection.return_value = (mock_connection, "test_conn_id")
+            mock_get_pool.return_value = mock_pool
+            
+            # Create provider with connection pooling
+            provider = LanceDBProvider(
+                uri="/path/to/db", 
+                use_connection_pool=True
+            )
+            
+            # Test function to run with connection
+            test_func = MagicMock(return_value="test_result")
+            
+            # Execute with connection
+            result = provider._with_connection(test_func)
+            
+            # Verify function called with connection and result returned
+            test_func.assert_called_once_with(mock_connection)
+            assert result == "test_result"
+            mock_pool.get_connection.assert_called_once()
+            mock_pool.release_connection.assert_called_once_with(mock_connection, "test_conn_id")
+    
+    def test_get_or_create_table_with_pool(self):
+        """Test _get_or_create_table using connection pool."""
+        with patch('pygovpub.storage.providers.lancedb_provider.get_connection_pool') as mock_get_pool:
+            mock_pool = MagicMock()
+            mock_connection = MagicMock()
+            mock_table = MagicMock()
+            mock_pool.get_connection.return_value = (mock_connection, "test_conn_id")
+            mock_get_pool.return_value = mock_pool
+            
+            # Set up mock table
+            mock_connection.table_names.return_value = ["test_table"]
+            mock_connection.open_table.return_value = mock_table
+            mock_table.schema = MagicMock()
+            
+            # Create provider with connection pooling
+            provider = LanceDBProvider(
+                uri="/path/to/db", 
+                use_connection_pool=True
+            )
+            
+            # Mock the _check_table_has_vector_index method
+            provider._check_table_has_vector_index = MagicMock(return_value=True)
+            
+            # Get an existing table
+            table = provider._get_or_create_table("test_table")
+            
+            # Verify connection used correctly
+            mock_pool.get_connection.assert_called_once()
+            mock_connection.table_names.assert_called_once()
+            mock_connection.open_table.assert_called_once_with("test_table")
+            mock_pool.release_connection.assert_called_once_with(mock_connection, "test_conn_id")
+            assert table is mock_table
