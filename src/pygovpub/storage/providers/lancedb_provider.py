@@ -170,6 +170,7 @@ class LanceDBProvider:
                         ("embedding", pa.list_(pa.float32(), self.vector_dim)),
                         ("metadata", pa.string()),  # JSON-serialized metadata
                         ("content", pa.string()),   # Document content
+                        ("title", pa.string()),     # Document title
                         ("created_at", pa.timestamp("us")),
                         ("updated_at", pa.timestamp("us")),
                     ])
@@ -180,20 +181,30 @@ class LanceDBProvider:
                 )
 
                 # Create table
+                mode = "overwrite" if self.config.get("overwrite_tables", False) else "create"
                 table = self.db.create_table(
                     table_name,
                     data=empty_data,
-                    mode="overwrite" if self.config.get("overwrite_tables", False) else "error"
+                    mode=mode
                 )
 
                 # Create vector index if specified
                 if self.create_vector_index:
-                    table.create_index(
-                        ["embedding"],
-                        index_type="IVF_PQ",
-                        metric_type="L2",
-                        replace=True
-                    )
+                    try:
+                        # Try with new API
+                        table.create_index(
+                            ["embedding"],
+                            index_type="IVF_PQ",
+                            metric_type="L2",
+                            replace=True
+                        )
+                    except TypeError:
+                        # Fall back to old API
+                        table.create_index(
+                            ["embedding"],
+                            index_type="IVF_PQ",
+                            replace=True
+                        )
 
                 logger.info(f"Created new table {table_name} with vector index")
 
@@ -494,11 +505,29 @@ class LanceDBProvider:
 
                 # Apply filters if provided
                 if filter_criteria:
-                    filter_expr = " AND ".join([
-                        f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
-                        for key, value in filter_criteria.items()
-                    ])
-                    search = search.where(filter_expr)
+                    # Handle special text filter
+                    text_filter = None
+                    filter_criteria_copy = filter_criteria.copy()
+                    if "__text_filter" in filter_criteria_copy:
+                        text_value = filter_criteria_copy.pop("__text_filter")
+                        text_filter = f"(content LIKE '%{text_value}%' OR title LIKE '%{text_value}%')"
+                    
+                    # Process regular filters
+                    if filter_criteria_copy:
+                        regular_filters = " AND ".join([
+                            f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
+                            for key, value in filter_criteria_copy.items()
+                        ])
+                        
+                        if text_filter:
+                            filter_expr = f"({regular_filters}) AND {text_filter}"
+                        else:
+                            filter_expr = regular_filters
+                            
+                        search = search.where(filter_expr)
+                    elif text_filter:
+                        # Only text filter
+                        search = search.where(text_filter)
 
                 # Execute search
                 result = search.limit(limit).to_pandas()
@@ -627,20 +656,47 @@ class LanceDBProvider:
             # Define the search execution function
             def execute_search():
                 # Start hybrid query
-                if query_vector is not None:
-                    # True hybrid search with vector and text components
-                    search = table.search(query_vector, query_text=query_text)
-                else:
-                    # Full-text search only
-                    search = table.search(query_text=query_text)
+                try:
+                    if query_vector is not None:
+                        # Try hybrid search with vector and text components
+                        search = table.search(query_vector, query_text=query_text)
+                    else:
+                        # Try full-text search only
+                        search = table.search(query_text=query_text)
+                except TypeError:
+                    # Fallback for older LanceDB versions
+                    logger.warning(f"Using fallback text search for LanceDB, query_text not supported")
+                    search = table.search(query_vector or np.zeros(self.vector_dim).tolist())
+                    # Apply text filter manually
+                    if query_text:
+                        content_filter = f"content LIKE '%{query_text}%' OR title LIKE '%{query_text}%'"
+                        search = search.where(content_filter)
 
                 # Apply filters if provided
                 if filter_criteria:
-                    filter_expr = " AND ".join([
-                        f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
-                        for key, value in filter_criteria.items()
-                    ])
-                    search = search.where(filter_expr)
+                    # Handle special text filter
+                    text_filter = None
+                    filter_criteria_copy = filter_criteria.copy()
+                    if "__text_filter" in filter_criteria_copy:
+                        text_value = filter_criteria_copy.pop("__text_filter")
+                        text_filter = f"(content LIKE '%{text_value}%' OR title LIKE '%{text_value}%')"
+                    
+                    # Process regular filters
+                    if filter_criteria_copy:
+                        regular_filters = " AND ".join([
+                            f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
+                            for key, value in filter_criteria_copy.items()
+                        ])
+                        
+                        if text_filter:
+                            filter_expr = f"({regular_filters}) AND {text_filter}"
+                        else:
+                            filter_expr = regular_filters
+                            
+                        search = search.where(filter_expr)
+                    elif text_filter:
+                        # Only text filter
+                        search = search.where(text_filter)
 
                 # Execute search
                 result = search.limit(limit).to_pandas()
@@ -752,15 +808,42 @@ class LanceDBProvider:
             # Define the search execution function
             def execute_search():
                 # Start text query
-                search = table.search(query_text=query_text)
+                try:
+                    # Try to use query_text parameter
+                    search = table.search(query_text=query_text)
+                except TypeError:
+                    # Fallback for older LanceDB versions
+                    logger.warning(f"Using fallback text search for LanceDB, query_text not supported")
+                    # Create a dummy vector search and filter by text
+                    search = table.search(np.zeros(self.vector_dim).tolist())
+                    content_filter = f"content LIKE '%{query_text}%' OR title LIKE '%{query_text}%'"
+                    search = search.where(content_filter)
 
                 # Apply filters if provided
                 if filter_criteria:
-                    filter_expr = " AND ".join([
-                        f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
-                        for key, value in filter_criteria.items()
-                    ])
-                    search = search.where(filter_expr)
+                    # Handle special text filter
+                    text_filter = None
+                    filter_criteria_copy = filter_criteria.copy()
+                    if "__text_filter" in filter_criteria_copy:
+                        text_value = filter_criteria_copy.pop("__text_filter")
+                        text_filter = f"(content LIKE '%{text_value}%' OR title LIKE '%{text_value}%')"
+                    
+                    # Process regular filters
+                    if filter_criteria_copy:
+                        regular_filters = " AND ".join([
+                            f"{key} = '{value}'" if isinstance(value, str) else f"{key} = {value}"
+                            for key, value in filter_criteria_copy.items()
+                        ])
+                        
+                        if text_filter:
+                            filter_expr = f"({regular_filters}) AND {text_filter}"
+                        else:
+                            filter_expr = regular_filters
+                            
+                        search = search.where(filter_expr)
+                    elif text_filter:
+                        # Only text filter
+                        search = search.where(text_filter)
 
                 # Execute search
                 result = search.limit(limit).to_pandas()

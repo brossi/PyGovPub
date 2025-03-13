@@ -6,6 +6,7 @@ This module provides search providers for different data sources.
 
 import logging
 import time
+import numpy as np
 from typing import Any, Dict, List, Optional, Set, Union
 
 from pygovpub.api.base import BaseApiClient
@@ -23,6 +24,7 @@ from pygovpub.search.core import (
     Facet
 )
 from pygovpub.search.indexing import DocumentIndexer
+from pygovpub.storage.providers.lancedb_provider import LanceDBProvider
 
 logger = logging.getLogger("pygovpub.search.providers")
 
@@ -793,3 +795,220 @@ class CongressProvider(SearchProvider):
             execution_time_ms=execution_time_ms,
             source_counts={"congress": search_results.get("count", len(results))}
         )
+
+
+class LanceDBSearchProvider(SearchProvider):
+    """Search provider implementation that uses LanceDB backend."""
+    
+    provider_name = "lancedb"
+    supported_types = [t for t in SearchResultType]
+    
+    def __init__(self, lancedb_provider, table_name="documents"):
+        """Initialize with a LanceDB provider.
+        
+        Args:
+            lancedb_provider: LanceDBProvider instance
+            table_name: Name of the table to use for document storage
+        """
+        self.lancedb_provider = lancedb_provider
+        self.table_name = table_name
+    
+    async def add_document(self, id, title, content, metadata=None, type=SearchResultType.DOCUMENT, embedding=None):
+        """Add a document to the LanceDB store.
+        
+        Args:
+            id: Document ID
+            title: Document title
+            content: Document content
+            metadata: Document metadata
+            type: Document type
+            embedding: Vector embedding for the document (optional)
+            
+        Returns:
+            Document ID
+        """
+        if metadata is None:
+            metadata = {}
+        
+        # Add type to metadata
+        metadata["type"] = type.value if isinstance(type, SearchResultType) else type
+        
+        # Generate random embedding if none provided
+        if embedding is None:
+            embedding = np.random.rand(self.lancedb_provider.vector_dim).tolist()
+        
+        document = {
+            "id": id,
+            "title": title,
+            "content": content,
+            "metadata": metadata,
+            "embedding": embedding
+        }
+        
+        # Create a model class for the table
+        class DocumentModel:
+            __tablename__ = self.table_name
+        
+        self.lancedb_provider.create(DocumentModel, document)
+        return id
+    
+    async def search(self, query: SearchQuery) -> SearchResults:
+        """Perform search using LanceDB.
+        
+        Args:
+            query: Search query
+            
+        Returns:
+            Search results
+        """
+        start_time = time.time()
+        
+        # Get the query text and components
+        query_text = query.query_text
+        components = query.components
+        
+        # If query has vector, use it, otherwise use dummy vector
+        # In a real implementation, you would generate the vector from the query text
+        query_vector = getattr(query, "vector", None)
+        
+        # Create a model class for the table
+        class DocumentModel:
+            __tablename__ = self.table_name
+            
+        # Determine search type
+        raw_results = []
+        try:
+            if query_text and query_vector:
+                try:
+                    # Use hybrid search
+                    raw_results = self.lancedb_provider.hybrid_search(
+                        DocumentModel,
+                        query_text=query_text,
+                        query_vector=query_vector,
+                        limit=query.limit,
+                        filter_criteria=self._build_filter_criteria(query)
+                    )
+                except Exception as e:
+                    logger.warning(f"Hybrid search failed: {str(e)}. Falling back to vector search with text filter.")
+                    # Fallback to vector search with text filtering
+                    raw_results = self.lancedb_provider.vector_search(
+                        DocumentModel,
+                        query_vector=query_vector,
+                        limit=query.limit,
+                        filter_criteria=self._build_filter_criteria(query, additional_text=query_text)
+                    )
+            elif query_vector:
+                # Use vector search
+                raw_results = self.lancedb_provider.vector_search(
+                    DocumentModel,
+                    query_vector=query_vector,
+                    limit=query.limit,
+                    filter_criteria=self._build_filter_criteria(query)
+                )
+            elif query_text:
+                try:
+                    # Use text search through hybrid search
+                    raw_results = self.lancedb_provider.hybrid_search(
+                        DocumentModel,
+                        query_text=query_text,
+                        limit=query.limit,
+                        filter_criteria=self._build_filter_criteria(query)
+                    )
+                except Exception as e:
+                    logger.warning(f"Text search via hybrid_search failed: {str(e)}. Falling back to direct text filtering.")
+                    # Use text search directly
+                    raw_results = self.lancedb_provider.text_search(
+                        DocumentModel,
+                        query_text=query_text,
+                        limit=query.limit,
+                        filter_criteria=self._build_filter_criteria(query)
+                    )
+            else:
+                # No valid query, return empty results
+                return SearchResults(
+                    query=query,
+                    results=[],
+                    total=0,
+                    execution_time_ms=0,
+                    source_counts={"lancedb": 0}
+                )
+        except Exception as e:
+            logger.error(f"Error searching LanceDB: {e}")
+            return SearchResults(
+                query=query, 
+                results=[], 
+                total=0, 
+                execution_time_ms=0,
+                source_counts={"lancedb": 0}
+            )
+        
+        # Convert results to SearchResult objects
+        search_results = []
+        for result in raw_results:
+            # Determine result type from metadata
+            result_type = result.get("metadata", {}).get("type", SearchResultType.DOCUMENT.value)
+            if isinstance(result_type, str):
+                try:
+                    result_type = SearchResultType(result_type)
+                except ValueError:
+                    result_type = SearchResultType.DOCUMENT
+            
+            # Calculate score (distance is already normalized in vector search results)
+            score = result.get("score", 0.5)  # Default score if none provided
+            
+            # Create search result
+            search_results.append(
+                SearchResult(
+                    result_id=result["id"],
+                    title=result.get("title", ""),
+                    source="lancedb",
+                    type=result_type,
+                    date=result.get("created_at"),
+                    metadata=result.get("metadata", {}),
+                    score=score,
+                    text_snippet=result.get("content", "")[:200] + "..." if len(result.get("content", "")) > 200 else result.get("content", ""),
+                    url=result.get("metadata", {}).get("url", "")
+                )
+            )
+        
+        # Sort by score
+        search_results.sort(key=lambda x: x.score, reverse=True)
+        
+        execution_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Return search results
+        return SearchResults(
+            query=query,
+            results=search_results,
+            total=len(search_results),
+            execution_time_ms=execution_time_ms,
+            source_counts={"lancedb": len(search_results)}
+        )
+    
+    def _build_filter_criteria(self, query: SearchQuery, additional_text: str = None) -> Dict[str, Any]:
+        """Build filter criteria from query components.
+        
+        Args:
+            query: Search query
+            additional_text: Optional additional text to filter by (for fallback hybrid search)
+            
+        Returns:
+            Filter criteria dictionary for LanceDB
+        """
+        filter_criteria = {}
+        
+        # Apply result type filter
+        if hasattr(query, "result_types") and query.result_types:
+            filter_criteria["metadata.type"] = query.result_types[0].value
+        
+        # Apply custom filters from components
+        if query.components:
+            for component in query.components:
+                if component.field and component.value:
+                    filter_criteria[component.field] = component.value
+        
+        # Add text filter if provided (for fallback hybrid search)
+        if additional_text:
+            filter_criteria["__text_filter"] = additional_text  # This will be processed by LanceDBProvider
+        
+        return filter_criteria
