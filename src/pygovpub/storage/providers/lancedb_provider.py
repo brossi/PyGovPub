@@ -10,7 +10,9 @@ import os
 import time
 import json
 import uuid
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
+import threading
+import queue
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, Callable
 
 import structlog
 import lancedb
@@ -42,8 +44,517 @@ LANCEDB_SCHEMA_VERSION = Gauge(
     "LanceDB schema version for a table",
     ["table", "version"]
 )
+LANCEDB_POOL_CONNECTIONS = Gauge(
+    "lancedb_pool_connections",
+    "Total LanceDB connections in pool",
+    ["pool_id", "status"]
+)
+LANCEDB_POOL_OPERATIONS = Counter(
+    "lancedb_pool_operations",
+    "Total LanceDB pool operations",
+    ["operation", "status", "pool_id"]
+)
+LANCEDB_POOL_WAIT_TIME = Histogram(
+    "lancedb_pool_wait_time_seconds",
+    "LanceDB pool connection wait time in seconds",
+    ["pool_id"]
+)
 
 T = TypeVar("T")
+
+
+class LanceDBConnectionPool:
+    """
+    Connection pool for LanceDB to enable efficient connection reuse.
+    
+    This class manages a pool of LanceDB connections that can be shared across
+    different parts of the application. It provides connection pooling with:
+    - Connection health check and auto-recreation
+    - Connection lifecycle management
+    - Metrics tracking
+    - Configurable pool size and timeout
+    """
+    
+    def __init__(self, 
+                uri: str, 
+                pool_id: str = "default",
+                max_size: int = 5,
+                min_size: int = 1,
+                connection_timeout: float = 30.0,
+                idle_timeout: float = 300.0,  # 5 minutes
+                **connection_args):
+        """
+        Initialize a new LanceDB connection pool.
+        
+        Args:
+            uri: Path to LanceDB database
+            pool_id: Unique identifier for this pool
+            max_size: Maximum number of connections in pool
+            min_size: Minimum number of connections to maintain
+            connection_timeout: Timeout in seconds when waiting for a connection
+            idle_timeout: Timeout in seconds for idle connections before cleanup
+            **connection_args: Additional arguments to pass to LanceDB connect
+        """
+        self.uri = uri
+        self.pool_id = pool_id
+        self.max_size = max_size
+        self.min_size = min_size
+        self.connection_timeout = connection_timeout
+        self.idle_timeout = idle_timeout
+        self.connection_args = connection_args
+        
+        # Connection pool and metadata
+        self._available_connections = queue.Queue()
+        self._in_use_connections = {}  # conn_id -> (conn, last_used_timestamp)
+        self._connection_ids = {}  # conn object -> conn_id
+        self._last_connection_id = 0
+        
+        # Lock for thread safety
+        self._lock = threading.RLock()
+        
+        # Create initial connections
+        with self._lock:  # Make sure we create all connections atomically
+            for _ in range(min_size):
+                self._add_connection_to_pool()
+            
+            # Update metrics
+            LANCEDB_POOL_CONNECTIONS.labels(
+                pool_id=self.pool_id,
+                status="available"
+            ).set(self._available_connections.qsize())
+            
+            LANCEDB_POOL_CONNECTIONS.labels(
+                pool_id=self.pool_id,
+                status="in_use"
+            ).set(0)
+        
+        logger.info(f"LanceDB connection pool initialized with {min_size} connections", 
+                   pool_id=pool_id, 
+                   uri=uri)
+    
+    def _generate_connection_id(self) -> str:
+        """
+        Generate a unique connection ID.
+        
+        Returns:
+            Unique connection ID
+        """
+        with self._lock:
+            self._last_connection_id += 1
+            return f"{self.pool_id}_{self._last_connection_id}"
+    
+    def _add_connection_to_pool(self) -> None:
+        """
+        Create a new connection and add it to the pool.
+        """
+        try:
+            # Create a new connection
+            connection = lancedb.connect(self.uri, **self.connection_args)
+            conn_id = self._generate_connection_id()
+            self._connection_ids[connection] = conn_id
+            
+            # Add to available queue
+            self._available_connections.put((connection, time.time()))
+            
+            # Update metrics
+            LANCEDB_POOL_CONNECTIONS.labels(
+                pool_id=self.pool_id,
+                status="available"
+            ).set(self._available_connections.qsize())
+            
+            LANCEDB_POOL_OPERATIONS.labels(
+                operation="create_connection",
+                status="success",
+                pool_id=self.pool_id
+            ).inc()
+            
+            logger.debug(f"Added new connection to pool", pool_id=self.pool_id, conn_id=conn_id)
+        except Exception as e:
+            # Update metrics
+            LANCEDB_POOL_OPERATIONS.labels(
+                operation="create_connection",
+                status="error",
+                pool_id=self.pool_id
+            ).inc()
+            
+            logger.error(f"Failed to create LanceDB connection", pool_id=self.pool_id, error=str(e))
+            raise
+    
+    def _is_connection_valid(self, connection) -> bool:
+        """
+        Check if a connection is still valid.
+        
+        Args:
+            connection: LanceDB connection to check
+            
+        Returns:
+            True if connection is valid, False otherwise
+        """
+        try:
+            # Simple validity check - see if we can get table names
+            connection.table_names()
+            return True
+        except Exception:
+            return False
+    
+    def get_connection(self) -> Tuple[Any, str]:
+        """
+        Get a connection from the pool.
+        
+        Returns:
+            Tuple of (connection, connection_id)
+            
+        Raises:
+            TimeoutError: If no connection available within timeout
+        """
+        start_time = time.time()
+        
+        try:
+            # Try to get an existing connection from the pool
+            while True:
+                # Check if we've timed out
+                if time.time() - start_time > self.connection_timeout:
+                    LANCEDB_POOL_OPERATIONS.labels(
+                        operation="get_connection",
+                        status="timeout",
+                        pool_id=self.pool_id
+                    ).inc()
+                    
+                    raise TimeoutError(f"Timed out waiting for LanceDB connection after {self.connection_timeout}s")
+                
+                try:
+                    # Try to get a connection with a timeout
+                    connection, created_time = self._available_connections.get(
+                        block=True, 
+                        timeout=min(1.0, self.connection_timeout)
+                    )
+                    
+                    # Check if the connection is still valid
+                    if self._is_connection_valid(connection):
+                        # Connection is valid, mark as in use
+                        with self._lock:
+                            conn_id = self._connection_ids.get(connection)
+                            if conn_id is None:
+                                # This shouldn't happen, but handle it gracefully
+                                conn_id = self._generate_connection_id()
+                                self._connection_ids[connection] = conn_id
+                                
+                            self._in_use_connections[conn_id] = (connection, time.time())
+                        
+                        # Update metrics
+                        LANCEDB_POOL_CONNECTIONS.labels(
+                            pool_id=self.pool_id,
+                            status="available"
+                        ).set(self._available_connections.qsize())
+                        
+                        LANCEDB_POOL_CONNECTIONS.labels(
+                            pool_id=self.pool_id,
+                            status="in_use"
+                        ).set(len(self._in_use_connections))
+                        
+                        LANCEDB_POOL_WAIT_TIME.labels(
+                            pool_id=self.pool_id
+                        ).observe(time.time() - start_time)
+                        
+                        LANCEDB_POOL_OPERATIONS.labels(
+                            operation="get_connection",
+                            status="success",
+                            pool_id=self.pool_id
+                        ).inc()
+                        
+                        logger.debug(f"Got connection from pool", 
+                                    pool_id=self.pool_id, 
+                                    conn_id=conn_id,
+                                    wait_time=time.time() - start_time)
+                        
+                        return connection, conn_id
+                    else:
+                        # Connection is invalid, create a new one
+                        logger.warning(f"Discarding invalid connection", 
+                                     pool_id=self.pool_id, 
+                                     conn_id=self._connection_ids.get(connection, "unknown"))
+                        
+                        LANCEDB_POOL_OPERATIONS.labels(
+                            operation="discard_connection",
+                            status="invalid",
+                            pool_id=self.pool_id
+                        ).inc()
+                        
+                        # Clean up connection id mapping
+                        with self._lock:
+                            if connection in self._connection_ids:
+                                del self._connection_ids[connection]
+                        
+                        # Create a new connection if needed
+                        if self._available_connections.qsize() + len(self._in_use_connections) < self.min_size:
+                            self._add_connection_to_pool()
+                except queue.Empty:
+                    # No connection available, check if we can create a new one
+                    with self._lock:
+                        current_total = self._available_connections.qsize() + len(self._in_use_connections)
+                        if current_total < self.max_size:
+                            # Create a new connection
+                            self._add_connection_to_pool()
+                            logger.debug(f"Created new connection due to pool exhaustion", 
+                                        pool_id=self.pool_id,
+                                        current_size=current_total)
+                        else:
+                            # Pool is at max size, just wait for a connection
+                            logger.debug(f"Pool at max size, waiting for connection", 
+                                        pool_id=self.pool_id,
+                                        max_size=self.max_size)
+                            
+        except Exception as e:
+            if not isinstance(e, TimeoutError):
+                LANCEDB_POOL_OPERATIONS.labels(
+                    operation="get_connection",
+                    status="error",
+                    pool_id=self.pool_id
+                ).inc()
+                
+                logger.error(f"Error getting connection from pool", 
+                           pool_id=self.pool_id,
+                           error=str(e))
+            raise
+    
+    def release_connection(self, connection, conn_id: str) -> None:
+        """
+        Release a connection back to the pool.
+        
+        Args:
+            connection: LanceDB connection to release
+            conn_id: Connection ID
+        """
+        try:
+            with self._lock:
+                # Check if this connection is actually in use
+                if conn_id in self._in_use_connections:
+                    # Remove from in-use tracking
+                    del self._in_use_connections[conn_id]
+                    
+                    # Check if connection is still valid
+                    if self._is_connection_valid(connection):
+                        # Return to available pool
+                        self._available_connections.put((connection, time.time()))
+                        
+                        LANCEDB_POOL_OPERATIONS.labels(
+                            operation="release_connection",
+                            status="success",
+                            pool_id=self.pool_id
+                        ).inc()
+                    else:
+                        # Connection is invalid, discard it
+                        logger.warning(f"Discarding invalid connection on release", 
+                                     pool_id=self.pool_id,
+                                     conn_id=conn_id)
+                        
+                        LANCEDB_POOL_OPERATIONS.labels(
+                            operation="release_connection",
+                            status="invalid",
+                            pool_id=self.pool_id
+                        ).inc()
+                        
+                        # Clean up connection id mapping
+                        if connection in self._connection_ids:
+                            del self._connection_ids[connection]
+                        
+                        # Create a new connection if needed
+                        if self._available_connections.qsize() + len(self._in_use_connections) < self.min_size:
+                            self._add_connection_to_pool()
+                else:
+                    # This connection wasn't tracked as in-use
+                    logger.warning(f"Attempt to release untracked connection", 
+                                 pool_id=self.pool_id,
+                                 conn_id=conn_id)
+                    
+                    LANCEDB_POOL_OPERATIONS.labels(
+                        operation="release_connection",
+                        status="untracked",
+                        pool_id=self.pool_id
+                    ).inc()
+            
+            # Update metrics
+            LANCEDB_POOL_CONNECTIONS.labels(
+                pool_id=self.pool_id,
+                status="available"
+            ).set(self._available_connections.qsize())
+            
+            LANCEDB_POOL_CONNECTIONS.labels(
+                pool_id=self.pool_id,
+                status="in_use"
+            ).set(len(self._in_use_connections))
+            
+        except Exception as e:
+            LANCEDB_POOL_OPERATIONS.labels(
+                operation="release_connection",
+                status="error",
+                pool_id=self.pool_id
+            ).inc()
+            
+            logger.error(f"Error releasing connection to pool", 
+                       pool_id=self.pool_id,
+                       conn_id=conn_id,
+                       error=str(e))
+    
+    def cleanup_idle_connections(self) -> int:
+        """
+        Clean up idle connections that have exceeded the idle timeout.
+        
+        Returns:
+            Number of connections cleaned up
+        """
+        now = time.time()
+        cleaned_up = 0
+        
+        try:
+            # Check available connections
+            remaining_connections = []
+            while not self._available_connections.empty():
+                try:
+                    connection, created_time = self._available_connections.get_nowait()
+                    
+                    # Check if this connection has been idle too long
+                    if now - created_time > self.idle_timeout:
+                        # Connection is too idle, close it
+                        with self._lock:
+                            conn_id = self._connection_ids.get(connection)
+                            if conn_id:
+                                logger.debug(f"Closing idle connection", 
+                                           pool_id=self.pool_id,
+                                           conn_id=conn_id,
+                                           idle_time=now - created_time)
+                                
+                                if connection in self._connection_ids:
+                                    del self._connection_ids[connection]
+                                
+                                cleaned_up += 1
+                    else:
+                        # Connection is still fresh, keep it
+                        remaining_connections.append((connection, created_time))
+                except queue.Empty:
+                    break
+            
+            # Put back the connections we want to keep
+            for conn_tuple in remaining_connections:
+                self._available_connections.put(conn_tuple)
+            
+            # Create new connections if we're below min_size
+            current_size = self._available_connections.qsize() + len(self._in_use_connections)
+            for _ in range(max(0, self.min_size - current_size)):
+                self._add_connection_to_pool()
+            
+            # Update metrics
+            LANCEDB_POOL_CONNECTIONS.labels(
+                pool_id=self.pool_id,
+                status="available"
+            ).set(self._available_connections.qsize())
+            
+            if cleaned_up > 0:
+                LANCEDB_POOL_OPERATIONS.labels(
+                    operation="cleanup_idle",
+                    status="success",
+                    pool_id=self.pool_id
+                ).inc(cleaned_up)
+                
+                logger.debug(f"Cleaned up {cleaned_up} idle connections", 
+                           pool_id=self.pool_id,
+                           remaining=current_size)
+            
+            return cleaned_up
+        except Exception as e:
+            LANCEDB_POOL_OPERATIONS.labels(
+                operation="cleanup_idle",
+                status="error",
+                pool_id=self.pool_id
+            ).inc()
+            
+            logger.error(f"Error cleaning up idle connections", 
+                       pool_id=self.pool_id,
+                       error=str(e))
+            return 0
+    
+    def close_all(self) -> None:
+        """
+        Close all connections in the pool.
+        """
+        logger.info(f"Closing all connections in pool", pool_id=self.pool_id)
+        
+        with self._lock:
+            # Empty the available queue
+            while not self._available_connections.empty():
+                try:
+                    connection, _ = self._available_connections.get_nowait()
+                    # No need to explicitly close LanceDB connections
+                except queue.Empty:
+                    break
+            
+            # Clear in-use connections (can't really close them while in use)
+            self._in_use_connections.clear()
+            self._connection_ids.clear()
+            
+            # Update metrics
+            LANCEDB_POOL_CONNECTIONS.labels(
+                pool_id=self.pool_id,
+                status="available"
+            ).set(0)
+            
+            LANCEDB_POOL_CONNECTIONS.labels(
+                pool_id=self.pool_id,
+                status="in_use"
+            ).set(0)
+            
+            LANCEDB_POOL_OPERATIONS.labels(
+                operation="close_all",
+                status="success",
+                pool_id=self.pool_id
+            ).inc()
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about the connection pool.
+        
+        Returns:
+            Dictionary with pool statistics
+        """
+        with self._lock:
+            stats = {
+                "pool_id": self.pool_id,
+                "max_size": self.max_size,
+                "min_size": self.min_size,
+                "available_connections": self._available_connections.qsize(),
+                "in_use_connections": len(self._in_use_connections),
+                "total_connections": self._available_connections.qsize() + len(self._in_use_connections),
+                "connection_timeout": self.connection_timeout,
+                "idle_timeout": self.idle_timeout
+            }
+            
+            return stats
+
+
+# Global registry of connection pools
+_connection_pools: Dict[str, LanceDBConnectionPool] = {}
+_connection_pools_lock = threading.RLock()
+
+def get_connection_pool(uri: str, pool_id: str = "default", **kwargs) -> LanceDBConnectionPool:
+    """
+    Get or create a connection pool for the given URI.
+    
+    Args:
+        uri: LanceDB URI
+        pool_id: Pool identifier (useful for having multiple pools for same URI)
+        **kwargs: Additional connection pool parameters
+        
+    Returns:
+        LanceDB connection pool
+    """
+    pool_key = f"{uri}_{pool_id}"
+    
+    with _connection_pools_lock:
+        if pool_key not in _connection_pools:
+            # Create a new pool
+            _connection_pools[pool_key] = LanceDBConnectionPool(uri, pool_id, **kwargs)
+        
+        return _connection_pools[pool_key]
 
 class LanceDBProvider:
     """LanceDB storage provider implementation"""
@@ -56,6 +567,10 @@ class LanceDBProvider:
                 create_vector_index: bool = True,
                 vector_dim: int = 384,
                 schema_registry=None,
+                use_connection_pool: bool = True,
+                pool_id: str = "default",
+                pool_max_size: int = 10, 
+                pool_min_size: int = 2,
                 **config):
         """
         Initialize LanceDB provider.
@@ -65,12 +580,20 @@ class LanceDBProvider:
             create_vector_index: Whether to create vector index on table creation
             vector_dim: Dimension of vector embeddings (default: 384 for all-MiniLM-L6-v2)
             schema_registry: Optional schema registry instance for schema management
+            use_connection_pool: Whether to use connection pooling
+            pool_id: Connection pool identifier (only used if use_connection_pool=True)
+            pool_max_size: Maximum number of connections in the pool
+            pool_min_size: Minimum number of connections to maintain in the pool
             **config: Additional configuration options
         """
         self.vector_dim = vector_dim
         self.create_vector_index = create_vector_index
         self.schema_registry = schema_registry
         self.schema_adapter = None
+        self.use_connection_pool = use_connection_pool
+        self.pool_id = pool_id
+        self.current_connection = None
+        self.current_connection_id = None
 
         # Use temporary directory if no URI provided
         if not uri:
@@ -82,9 +605,38 @@ class LanceDBProvider:
             logger.info(f"Creating LanceDB at {uri}")
 
         self.uri = uri
-        self.db = lancedb.connect(uri)
         self.config = config
         self.table_info = {}  # Cache table metadata
+        
+        # Initialize connection - either direct or via pool
+        if self.use_connection_pool:
+            # Get or create a connection pool
+            self.connection_pool = get_connection_pool(
+                uri=uri,
+                pool_id=pool_id,
+                max_size=pool_max_size,
+                min_size=pool_min_size,
+                **{k: v for k, v in config.items() if k in ['connection_timeout', 'idle_timeout']}
+            )
+            # Get an initial connection for compatibility with old code
+            self.db, self.current_connection_id = self.connection_pool.get_connection()
+            
+            # Make sure we have additional connections to meet min_size
+            current_available = self.connection_pool._available_connections.qsize()
+            if current_available + 1 < pool_min_size:  # +1 because we have one connection in use
+                for _ in range(pool_min_size - current_available - 1):
+                    self.connection_pool._add_connection_to_pool()
+                    
+            logger.info("LanceDB provider initialized with connection pool", 
+                      uri=uri, 
+                      pool_id=pool_id, 
+                      max_size=pool_max_size, 
+                      min_size=pool_min_size)
+        else:
+            # Create a direct connection (old behavior)
+            self.db = lancedb.connect(uri)
+            self.connection_pool = None
+            logger.info("LanceDB provider initialized with direct connection", uri=uri)
 
         # Initialize schema adapter if registry provided
         if self.schema_registry:
@@ -94,8 +646,47 @@ class LanceDBProvider:
                 logger.info("LanceDB schema adapter initialized")
             except ImportError as e:
                 logger.warning(f"Could not initialize LanceDB schema adapter: {str(e)}")
-
-        logger.info("LanceDB provider initialized", uri=uri)
+    
+    def _get_connection(self):
+        """
+        Get a LanceDB connection - either from the pool or the direct connection.
+        
+        Returns:
+            Tuple of (connection, connection_id)
+        """
+        if self.use_connection_pool:
+            return self.connection_pool.get_connection()
+        else:
+            return self.db, None
+    
+    def _release_connection(self, connection, connection_id):
+        """
+        Release a connection back to the pool if using connection pooling.
+        
+        Args:
+            connection: LanceDB connection
+            connection_id: Connection ID
+        """
+        if self.use_connection_pool and connection_id:
+            # Don't release the initial connection, as it's kept for compatibility
+            if connection_id != self.current_connection_id:
+                self.connection_pool.release_connection(connection, connection_id)
+    
+    def _with_connection(self, func):
+        """
+        Execute a function with a connection, properly managing the connection lifecycle.
+        
+        Args:
+            func: Function that takes a connection as its argument
+            
+        Returns:
+            Result of the function
+        """
+        connection, connection_id = self._get_connection()
+        try:
+            return func(connection)
+        finally:
+            self._release_connection(connection, connection_id)
 
     def _model_to_dict(self, model_obj: Any) -> Dict[str, Any]:
         """
@@ -134,87 +725,98 @@ class LanceDBProvider:
         """
         start_time = time.time()
 
-        try:
-            # Check if table exists
-            if table_name in self.db.table_names():
-                table = self.db.open_table(table_name)
-                logger.debug(f"Opened existing table {table_name}")
-                
-                # Apply schema version if provided and adapter available
-                if schema_version and self.schema_adapter:
-                    self.schema_adapter.apply_schema_version(table_name, schema_version)
-                    # Update metrics
-                    LANCEDB_SCHEMA_VERSION.labels(
-                        table=table_name,
-                        version=schema_version
-                    ).set(1)
-            else:
-                # If schema version is provided and adapter available, use that schema
-                if schema_version and self.schema_adapter:
-                    # Get schema from registry
-                    registry_schema = self.schema_registry.get_schema_version(schema_version)
-                    if registry_schema:
-                        schema = self.schema_adapter._convert_schema_version_to_arrow(registry_schema)
-                        logger.info(f"Using schema version {schema_version} for table {table_name}")
+        # Define the function to run with a connection
+        def get_or_create_table_with_connection(connection):
+            try:
+                # Check if table exists
+                if table_name in connection.table_names():
+                    table = connection.open_table(table_name)
+                    logger.debug(f"Opened existing table {table_name}")
+                    
+                    # Apply schema version if provided and adapter available
+                    if schema_version and self.schema_adapter:
+                        self.schema_adapter.apply_schema_version(table_name, schema_version)
                         # Update metrics
                         LANCEDB_SCHEMA_VERSION.labels(
                             table=table_name,
                             version=schema_version
                         ).set(1)
-                
-                # Use default schema if none provided
-                if schema is None:
-                    # Create a minimal initial schema if none provided
-                    schema = pa.schema([
-                        ("id", pa.string()),
-                        ("embedding", pa.list_(pa.float32(), self.vector_dim)),
-                        ("metadata", pa.string()),  # JSON-serialized metadata
-                        ("content", pa.string()),   # Document content
-                        ("title", pa.string()),     # Document title
-                        ("created_at", pa.timestamp("us")),
-                        ("updated_at", pa.timestamp("us")),
-                    ])
+                else:
+                    # If schema version is provided and adapter available, use that schema
+                    local_schema = schema
+                    if schema_version and self.schema_adapter:
+                        # Get schema from registry
+                        registry_schema = self.schema_registry.get_schema_version(schema_version)
+                        if registry_schema:
+                            local_schema = self.schema_adapter._convert_schema_version_to_arrow(registry_schema)
+                            logger.info(f"Using schema version {schema_version} for table {table_name}")
+                            # Update metrics
+                            LANCEDB_SCHEMA_VERSION.labels(
+                                table=table_name,
+                                version=schema_version
+                            ).set(1)
+                    
+                    # Use default schema if none provided
+                    if local_schema is None:
+                        # Create a minimal initial schema if none provided
+                        local_schema = pa.schema([
+                            ("id", pa.string()),
+                            ("embedding", pa.list_(pa.float32(), self.vector_dim)),
+                            ("metadata", pa.string()),  # JSON-serialized metadata
+                            ("content", pa.string()),   # Document content
+                            ("title", pa.string()),     # Document title
+                            ("created_at", pa.timestamp("us")),
+                            ("updated_at", pa.timestamp("us")),
+                        ])
 
-                # Create empty table with schema
-                empty_data = pa.Table.from_pydict(
-                    {field.name: [] for field in schema}, schema=schema
-                )
+                    # Create empty table with schema
+                    empty_data = pa.Table.from_pydict(
+                        {field.name: [] for field in local_schema}, schema=local_schema
+                    )
 
-                # Create table
-                mode = "overwrite" if self.config.get("overwrite_tables", False) else "create"
-                table = self.db.create_table(
-                    table_name,
-                    data=empty_data,
-                    mode=mode
-                )
+                    # Create table
+                    mode = "overwrite" if self.config.get("overwrite_tables", False) else "create"
+                    table = connection.create_table(
+                        table_name,
+                        data=empty_data,
+                        mode=mode
+                    )
 
-                # Create vector index if specified
-                if self.create_vector_index:
-                    try:
-                        # Try with new API
-                        table.create_index(
-                            ["embedding"],
-                            index_type="IVF_PQ",
-                            metric_type="L2",
-                            replace=True
-                        )
-                    except TypeError:
-                        # Fall back to old API
-                        table.create_index(
-                            ["embedding"],
-                            index_type="IVF_PQ",
-                            replace=True
-                        )
+                    # Create vector index if specified
+                    if self.create_vector_index:
+                        try:
+                            # Simple index creation without extra parameters
+                            # This will use default settings which should work across LanceDB versions
+                            table.create_index("embedding", replace=True)
+                        except Exception as e:
+                            logger.warning(f"Could not create vector index: {str(e)}")
+                            # We'll continue without an index
 
-                logger.info(f"Created new table {table_name} with vector index")
+                    logger.info(f"Created new table {table_name} with vector index")
 
-            # Cache table info
-            self.table_info[table_name] = {
-                "has_vector_index": self._check_table_has_vector_index(table),
-                "schema": table.schema,
-                "version": schema_version
-            }
+                # Cache table info
+                self.table_info[table_name] = {
+                    "has_vector_index": self._check_table_has_vector_index(table),
+                    "schema": table.schema,
+                    "version": schema_version
+                }
 
+                return table
+
+            except Exception as e:
+                LANCEDB_OPERATIONS.labels(
+                    operation="get_or_create_table",
+                    status="error",
+                    table=table_name
+                ).inc()
+
+                logger.error(f"Error getting/creating table {table_name}", error=str(e))
+                raise
+
+        try:
+            # Execute with connection pooling
+            table = self._with_connection(get_or_create_table_with_connection)
+            
             LANCEDB_OPERATION_DURATION.labels(
                 operation="get_or_create_table",
                 table=table_name
@@ -229,7 +831,7 @@ class LanceDBProvider:
                 table=table_name
             ).inc()
 
-            logger.error(f"Error getting/creating table {table_name}", error=str(e))
+            logger.error(f"Error in _get_or_create_table for {table_name}", error=str(e))
             raise
 
     def _check_table_has_vector_index(self, table) -> bool:
